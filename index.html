@@ -339,16 +339,20 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <label style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;cursor:pointer;">
     <input type="checkbox" id="fAuto" style="width:20px;height:20px;"> 매일 근무시간표대로 자동 기록 (출근·퇴근 자동 입력)
   </label>
-  <label class="f">부관리자 권한 <span style="font-weight:400;">(메인 관리자만 변경 가능)</span></label>
-  <label style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;cursor:pointer;">
-    <input type="checkbox" id="fAdmin" style="width:20px;height:20px;"> 관리자와 같은 화면 공유 (설정 제외 · 직원 출퇴근 화면에 비노출)
-  </label>
+  <label class="f">권한 <span style="font-weight:400;">(메인 관리자만 변경 가능)</span></label>
+  <select id="fRole">
+    <option value="staff">직원 — 본인 출퇴근만</option>
+    <option value="subadmin">부관리자 — 직원 초대·근태 관리 (급여·개인정보 열람 불가)</option>
+    <option value="admin">관리자 — 급여·개인정보까지 전체 공유 (설정 제외)</option>
+  </select>
   <label class="f">휴대폰 번호 <span style="font-weight:400;">(직원 초대 · 본인인증용)</span></label><input id="fPhone" inputmode="numeric" placeholder="010-0000-0000">
+  <div id="fWrapPriv">
   <label class="f">주민등록번호 <span style="font-weight:400;">(급여대장용 · 선택)</span></label><input id="fRrn" placeholder="000000-0000000">
   <label class="f">은행 / 계좌번호 <span style="font-weight:400;">(선택)</span></label>
   <div class="row">
     <input id="fBank" placeholder="은행" style="flex:1;">
     <input id="fAcct" placeholder="계좌번호" style="flex:2;">
+  </div>
   </div>
   <div class="row" style="margin-top:18px;">
     <button class="btn p" style="flex:1;" onclick="saveEmp()">저장하기</button>
@@ -382,7 +386,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_003938'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_030143'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -437,6 +441,7 @@ setInterval(tick,1000);
 let adminOK=false, pendingPage=null;
 function go(p,needAdmin){
   if(p==='set'&&!isOwnerDev()){ toast('설정은 메인 관리자 기기에서만 열 수 있습니다'); return; }
+  if(p==='pay'&&!canPriv()){ toast('급여는 관리자 권한 기기에서만 볼 수 있습니다'); return; }
   if(needAdmin&&p!=='status'&&!adminOK){ pendingPage=p; document.getElementById('pinInput').value=''; openM('mdPin'); setTimeout(()=>document.getElementById('pinInput').focus(),150); return; }
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
   document.getElementById('pg-'+p).classList.add('on');
@@ -711,13 +716,13 @@ function renderEmpList(){
   const mk=(e)=>{
     const months=Math.max(0,Math.floor((new Date(e.leaveDate||todayStr())-new Date(e.joinDate))/(30.44*864e5)));
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
-    const admin=e.main?' <span class="badge b-admin">메인관리자</span>':e.role==='admin'?' <span class="badge b-admin">부관리자</span>':'';
+    const admin=e.main?' <span class="badge b-admin">메인관리자</span>':e.role==='admin'?' <span class="badge b-admin">관리자</span>':e.role==='subadmin'?' <span class="badge b-admin">부관리자</span>':'';
     const duty=e.duty?` <span class="badge b-duty">${e.duty}</span>`:'';
     const off=e.leaveDate?' <span class="badge b-off">퇴사</span>':'';
-    const payS=e.type==='daily'?`시급 ${comma(e.hourly)}원`:`월 ${comma(e.salary)}원`;
+    const payS=!canPriv()?'':e.type==='daily'?` · 시급 ${comma(e.hourly)}원`:` · 월 ${comma(e.salary)}원`;
     return `<div class="emp-row" onclick="openEmpForm('${e.id}')"><div>
       <div class="nm">${e.name} ${badge}${admin}${duty}${off}</div>
-      <div class="info">근무기간 : ${e.joinDate} ~ ${e.leaveDate||'계속'} (${months}개월) · ${payS}</div>
+      <div class="info">근무기간 : ${e.joinDate} ~ ${e.leaveDate||'계속'} (${months}개월)${payS}</div>
     </div><div class="arrow">›</div></div>`;
   };
   document.getElementById('empListActive').innerHTML=act.map(mk).join('')||'<div class="muted" style="padding:10px 0;">재직 중인 직원이 없습니다.</div>';
@@ -738,12 +743,13 @@ function openEmpForm(id){
   document.getElementById('fStart').value=e?e.schedule.start:'09:00';
   document.getElementById('fEnd').value=e?e.schedule.end:'18:00';
   document.getElementById('fAuto').checked=e?!!e.autoPunch:false;
-  document.getElementById('fAdmin').checked=e?(e.role||'staff')==='admin':false;
-  document.getElementById('fAdmin').disabled=!isOwnerDev()||!!(e&&e.main); // 부관리자 권한은 메인 관리자만 부여, 메인관리자 본인은 변경 불가
+  document.getElementById('fRole').value=e?(e.main?'admin':(e.role||'staff')):'staff';
+  document.getElementById('fRole').disabled=!isOwnerDev()||!!(e&&e.main); // 권한은 메인 관리자만 변경, 메인관리자 본인은 고정
   document.getElementById('fPhone').value=e?(e.phone||''):'';
   document.getElementById('fRrn').value=e?(e.rrn||''):'';
   document.getElementById('fBank').value=e?(e.bank||''):'';
   document.getElementById('fAcct').value=e?(e.acct||''):'';
+  document.getElementById('fWrapPriv').style.display=canPriv()?'':'none'; // 부관리자 기기: 주민번호·계좌 비노출
   const days=e?e.schedule.days:[1,2,3,4,5];
   const dc=document.getElementById('fDays'); dc.innerHTML='';
   for(let i=0;i<7;i++){
@@ -758,6 +764,12 @@ function openEmpForm(id){
 }
 function empTypeUI(){
   const t=document.getElementById('fType').value;
+  if(!canPriv()){ // 부관리자 기기: 급여 칸 비노출
+    document.getElementById('fWrapSalary').style.display='none';
+    document.getElementById('fWrapHourly').style.display='none';
+    document.getElementById('fSalaryLabel').textContent=t==='freelance'?'월 용역비 (원) *':'월급여 (세전, 원) *';
+    return;
+  }
   document.getElementById('fWrapSalary').style.display=t==='daily'?'none':'block';
   document.getElementById('fWrapHourly').style.display=t==='daily'?'block':'none';
   document.getElementById('fSalaryLabel').textContent=t==='freelance'?'월 용역비 (원) *':'월급여 (세전, 원) *';
@@ -770,21 +782,23 @@ function saveEmp(){
   const o={
     name, type:t,
     duty:document.getElementById('fDuty').value.trim(),
-    salary:unc(document.getElementById('fSalary').value),
-    hourly:unc(document.getElementById('fHourly').value),
     dailyH:+document.getElementById('fDailyH').value||8,
     joinDate:document.getElementById('fJoin').value||todayStr(),
     autoPunch:document.getElementById('fAuto').checked,
     phone:document.getElementById('fPhone').value.trim(),
-    rrn:document.getElementById('fRrn').value.trim(),
-    bank:document.getElementById('fBank').value.trim(),
-    acct:document.getElementById('fAcct').value.trim(),
     schedule:{days:days.length?days:[1,2,3,4,5],start:document.getElementById('fStart').value||'09:00',end:document.getElementById('fEnd').value||'18:00'}
   };
-  if(isOwnerDev())o.role=document.getElementById('fAdmin').checked?'admin':'staff'; // 부관리자 권한은 메인 관리자만 변경
+  if(canPriv()){ // 급여·주민번호·계좌는 관리자 권한 기기에서만 입력/수정 (부관리자 기기는 기존 값 유지)
+    o.salary=unc(document.getElementById('fSalary').value);
+    o.hourly=unc(document.getElementById('fHourly').value);
+    o.rrn=document.getElementById('fRrn').value.trim();
+    o.bank=document.getElementById('fBank').value.trim();
+    o.acct=document.getElementById('fAcct').value.trim();
+    if(t!=='daily'&&!o.salary){toast('급여를 입력해 주세요');return;}
+    if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
+  }
+  if(isOwnerDev())o.role=document.getElementById('fRole').value; // 권한(직원/부관리자/관리자)은 메인 관리자만 변경
   if(editEmpId&&emp(editEmpId).main)o.role='admin'; // 메인관리자는 권한 강등 불가 (영구)
-  if(t!=='daily'&&!o.salary){toast('급여를 입력해 주세요');return;}
-  if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
   let savedId=editEmpId;
   if(editEmpId){ Object.assign(emp(editEmpId),o); }
   else{ savedId='e'+Date.now(); DB.employees.push({id:savedId,leaveDate:null,role:'staff',...o}); }
@@ -1163,9 +1177,17 @@ function ensureMain(){
 /* ── 관리자 기기 구분: 소유자(제작자·연동을 켠 기기) vs 링크로 추가된 공동 관리자 ── */
 function isOwnerDev(){ const c=cloudCfg(); if(!c)return true; if(c.role==='staff')return false; return c.owner!==false; }
 function setLocked(){ return !isOwnerDev(); }
-function applyNavVis(){ // 설정 탭은 메인 관리자 기기에만 표시
-  const b=document.querySelector('.nav button[data-p="set"]');
-  if(b)b.style.display=isOwnerDev()?'':'none';
+// 급여·주민번호·계좌 열람 가능 기기인지 (메인 관리자 = 항상, 관리자 = 공유키 보유, 부관리자·직원 = 불가)
+function canPriv(){
+  const c=cloudCfg(); if(!c)return true;
+  if(c.role!=='admin')return false;
+  return c.owner!==false||!!c.key;
+}
+function applyNavVis(){ // 설정 탭은 메인 관리자 기기에만, 급여 탭은 급여 열람 가능 기기에만 표시
+  const s=document.querySelector('.nav button[data-p="set"]');
+  if(s)s.style.display=isOwnerDev()?'':'none';
+  const p=document.querySelector('.nav button[data-p="pay"]');
+  if(p)p.style.display=canPriv()?'':'none';
 }
 function applySetLock(){
   const locked=setLocked();
@@ -1469,12 +1491,17 @@ function copyInvite(){
   const e=emp(editEmpId);
   if(!e.phone||e.phone.replace(/\D/g,'').length<10){toast('먼저 이 직원의 휴대폰 번호를 입력하고 저장해 주세요');return;}
   const pj={u:c.url,r:c.roomId,i:editEmpId,n:e.name,v:pinHash(e.phone.replace(/\D/g,''))};
-  const isAdm=(e.role||'staff')==='admin';
-  if(isAdm&&c.key){ pj.adm=1; pj.k=c.key; } // 부관리자: 관리자 화면 공유용 암호키 포함
+  const role=e.main?'admin':(e.role||'staff');
+  if(role==='admin'){
+    if(!c.key){toast('관리자 초대 링크는 메인 관리자 또는 관리자 기기에서만 만들 수 있습니다');return;}
+    pj.adm=1; pj.k=c.key;          // 관리자: 급여·개인정보까지 전체 공유 (암호키 포함)
+  } else if(role==='subadmin'){ pj.adm=1; } // 부관리자: 관리 화면은 공유하되 암호키 미포함 → 급여·개인정보 열람 불가
   const payload=btoa(unescape(encodeURIComponent(JSON.stringify(pj))));
   const link=location.origin+location.pathname+'#join='+payload;
-  const msg=isAdm
-    ?`[리플래시 work] ${e.name}님 부관리자 초대\n아래 링크를 눌러 본인인증(휴대폰 번호) 후, 화면을 홈 화면에 추가해 두세요.\n관리자와 같은 화면을 보며 함께 관리할 수 있습니다 (설정 제외).\n${link}`
+  const msg=role==='admin'
+    ?`[리플래시 work] ${e.name}님 관리자 초대\n아래 링크를 눌러 본인인증(휴대폰 번호) 후, 화면을 홈 화면에 추가해 두세요.\n급여를 포함한 모든 내역을 함께 관리할 수 있습니다 (설정 제외).\n${link}`
+    :role==='subadmin'
+    ?`[리플래시 work] ${e.name}님 부관리자 초대\n아래 링크를 눌러 본인인증(휴대폰 번호) 후, 화면을 홈 화면에 추가해 두세요.\n직원 초대와 근태 관리를 함께 할 수 있습니다 (급여·개인정보 제외).\n${link}`
     :`[리플래시 work] ${e.name}님 출퇴근 앱 초대\n아래 링크를 눌러 접속한 뒤, 화면을 즐겨찾기(홈 화면 추가) 해두세요.\n${link}`;
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(msg).then(()=>toast(e.name+'님 초대 링크 복사 완료! 카톡에 붙여넣기 하세요'))
@@ -1488,10 +1515,15 @@ function joinFromHash(){
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     if(!(p.u&&p.r&&p.i))return;
     const c=cloudCfg();
+    // 이미 부관리자로 쓰던 기기가 관리자 링크를 열면 관리자로 승격 (암호키 흡수)
+    if(c&&c.role==='admin'&&c.owner===false&&c.roomId===p.r&&c.myEmpId===p.i&&p.adm&&p.k&&!c.key){
+      c.key=p.k; save(); history.replaceState(null,'',location.pathname);
+      setTimeout(()=>toast('관리자로 승격되었습니다! 이제 급여까지 함께 관리합니다'),400); return;
+    }
     if(c&&c.role==='admin'){ history.replaceState(null,'',location.pathname); toast('관리자 기기에서는 초대 링크가 적용되지 않습니다'); return; }
     if(c&&c.role==='staff'&&c.roomId===p.r&&c.myEmpId===p.i){
-      // 이미 입장한 기기(홈 화면 앱). 부관리자 링크면 직원 → 부관리자로 승격
-      if(p.adm&&p.k){ DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k,myEmpId:p.i}; save(); setTimeout(()=>toast('부관리자로 전환되었습니다! 이제 관리자와 같은 화면을 공유합니다'),400); }
+      // 이미 입장한 기기(홈 화면 앱). 관리자/부관리자 링크면 승격
+      if(p.adm){ DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k||null,myEmpId:p.i}; save(); setTimeout(()=>toast(p.k?'관리자로 전환되었습니다! 급여까지 함께 관리합니다':'부관리자로 전환되었습니다! (급여·개인정보 제외)'),400); }
       return;
     }
     if(p.v){
@@ -1504,10 +1536,10 @@ function joinFromHash(){
       }
       if(!ok){alert('본인 확인에 실패했습니다. 관리자에게 문의해 주세요.');return;}
     }
-    if(p.adm&&p.k){ // 부관리자: 관리자와 같은 화면 공유 (설정 제외)
-      DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k,myEmpId:p.i};
+    if(p.adm){ // 관리자(키 있음: 급여까지 공유) / 부관리자(키 없음: 급여·개인정보 제외)
+      DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k||null,myEmpId:p.i};
       save();
-      setTimeout(()=>toast((p.n||'')+'님, 부관리자로 등록되었습니다! 이 화면 그대로 [홈 화면에 추가] 해두세요'),400);
+      setTimeout(()=>toast((p.n||'')+'님, '+(p.k?'관리자':'부관리자')+'로 등록되었습니다! 이 화면 그대로 [홈 화면에 추가] 해두세요'),400);
     } else {
       DB.settings.cloud={url:p.u,roomId:p.r,role:'staff',myEmpId:p.i};
       save();
