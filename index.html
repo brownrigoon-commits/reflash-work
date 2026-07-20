@@ -323,6 +323,10 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div style="flex:1;"><label class="f" style="margin-top:0;">출근시간</label><input type="time" id="fStart" value="09:00"></div>
     <div style="flex:1;"><label class="f" style="margin-top:0;">퇴근시간</label><input type="time" id="fEnd" value="18:00"></div>
   </div>
+  <label class="f">자동 출퇴근 <span style="font-weight:400;">(앱 사용이 어려운 직원용)</span></label>
+  <label style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;cursor:pointer;">
+    <input type="checkbox" id="fAuto" style="width:20px;height:20px;"> 매일 근무시간표대로 자동 기록 (출근·퇴근 자동 입력)
+  </label>
   <label class="f">휴대폰 번호 <span style="font-weight:400;">(직원 초대 · 본인인증용)</span></label><input id="fPhone" inputmode="numeric" placeholder="010-0000-0000">
   <label class="f">주민등록번호 <span style="font-weight:400;">(급여대장용 · 선택)</span></label><input id="fRrn" placeholder="000000-0000000">
   <label class="f">은행 / 계좌번호 <span style="font-weight:400;">(선택)</span></label>
@@ -347,7 +351,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div style="flex:1;"><label class="f" style="margin-top:0;">퇴근</label><input type="time" id="recOut"></div>
   </div>
   <button class="btn y wide" style="margin-top:10px;" onclick="fillSched()">⏰ 정시로 채우기 (근무시간표 대로)</button>
-  <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력해 주세요. 비워두면 기록이 삭제됩니다. 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
+  <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. 비워서 저장하면 기록이 삭제되며(자동 출퇴근 직원은 그날 자동입력이 꺼져 결근 처리), 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
   <div class="row" style="margin-top:16px;">
     <button class="btn p" style="flex:1;" onclick="saveRec()">저장</button>
     <button class="btn ghost" style="flex:1;" onclick="closeM('mdRec')">취소</button>
@@ -529,6 +533,38 @@ function visEmps(d){
   const l=activeEmps(d), c=cloudCfg();
   return (c&&c.role==='staff')?l.filter(e=>(e.role||'staff')!=='admin'):l;
 }
+/* ================== 자동 출퇴근 ================== */
+function autoPunchTick(){
+  let changed=false;
+  const now=new Date(), nowMin=now.getHours()*60+now.getMinutes(), tds=todayStr();
+  activeEmps().forEach(e=>{
+    if(!e.autoPunch)return;
+    for(let k=7;k>=0;k--){
+      const d=new Date(now); d.setDate(d.getDate()-k);
+      if(!isWorkday(e,d))continue;
+      const ds=fmtD(d);
+      if(recOf(ds,e.id))continue;            // 이미 기록(수동·끔 포함) 있으면 유지
+      if(ds<tds){                            // 지난 근무일: 정시 출퇴근으로 채움
+        DB.records[ds]=DB.records[ds]||{};
+        DB.records[ds][e.id]={in:e.schedule.start,out:e.schedule.end,auto:true};
+        changed=true; queueRec(ds,e.id);
+      }else if(nowMin>=toMin(e.schedule.start)){ // 오늘: 출근시간 지나면 출근
+        DB.records[ds]=DB.records[ds]||{};
+        const r={in:e.schedule.start,auto:true};
+        if(nowMin>=toMin(e.schedule.end))r.out=e.schedule.end;
+        DB.records[ds][e.id]=r;
+        changed=true; queueRec(ds,e.id);
+      }
+    }
+    const r=recOf(tds,e.id);                 // 오늘 자동출근 상태 → 퇴근시간 지나면 퇴근
+    if(r&&r.auto&&r.in&&!r.out&&nowMin>=toMin(e.schedule.end)){
+      r.out=e.schedule.end; changed=true; queueRec(tds,e.id);
+    }
+  });
+  if(changed){ save(); if(document.getElementById('pg-kiosk').classList.contains('on'))renderKiosk(); }
+}
+setInterval(autoPunchTick,60000);
+
 /* ================== 사업장 현황 ================== */
 let stView='day', stDate=new Date();
 function statusTab(v){ stView=v; document.querySelectorAll('#pg-status .mini-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); renderStatus(); }
@@ -549,7 +585,7 @@ function renderStatus(){
       const wm=workedMin(e,r);
       h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${r&&r.in?r.in:'-'}</td><td>${r&&r.out?r.out:'-'}</td>
         <td>${wm?Math.floor(wm/60)+'h '+(wm%60)+'m':'-'}</td>
-        <td><span class="tag ${st.t}">${st.l}</span>${r&&r.manual?' <span class="tag man">수정</span>':''}</td>
+        <td><span class="tag ${st.t}">${st.l}</span>${r&&r.auto?' <span class="tag man">자동</span>':''}${r&&r.manual?' <span class="tag man">수정</span>':''}</td>
         <td><button class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:8px;" onclick="openRec('${e.id}','${ds}')">수정</button></td></tr>`;
     });
     body.innerHTML=h+'</table></div><div class="muted" style="margin-top:10px;">「수정」은 관리자용입니다. 잘못 찍힌 기록을 고칠 수 있어요.</div></div>';
@@ -610,7 +646,11 @@ function fillSched(){
 function saveRec(){
   const i=document.getElementById('recIn').value,o=document.getElementById('recOut').value;
   DB.records[recDate]=DB.records[recDate]||{};
-  if(!i&&!o){ delete DB.records[recDate][recEmpId]; }
+  if(!i&&!o){
+    const _e=emp(recEmpId);
+    if(_e&&_e.autoPunch)DB.records[recDate][recEmpId]={off:true,manual:true}; // 자동입력 끔(결근)
+    else delete DB.records[recDate][recEmpId];
+  }
   else DB.records[recDate][recEmpId]={in:i||null,out:o||null,manual:true};
   save(); queueRec(recDate,recEmpId); closeM('mdRec'); renderStatus(); toast('저장되었습니다');
 }
@@ -647,6 +687,7 @@ function openEmpForm(id){
   document.getElementById('fJoin').value=e?e.joinDate:todayStr();
   document.getElementById('fStart').value=e?e.schedule.start:'09:00';
   document.getElementById('fEnd').value=e?e.schedule.end:'18:00';
+  document.getElementById('fAuto').checked=e?!!e.autoPunch:false;
   document.getElementById('fPhone').value=e?(e.phone||''):'';
   document.getElementById('fRrn').value=e?(e.rrn||''):'';
   document.getElementById('fBank').value=e?(e.bank||''):'';
@@ -680,6 +721,7 @@ function saveEmp(){
     hourly:unc(document.getElementById('fHourly').value),
     dailyH:+document.getElementById('fDailyH').value||8,
     joinDate:document.getElementById('fJoin').value||todayStr(),
+    autoPunch:document.getElementById('fAuto').checked,
     phone:document.getElementById('fPhone').value.trim(),
     rrn:document.getElementById('fRrn').value.trim(),
     bank:document.getElementById('fBank').value.trim(),
@@ -1010,7 +1052,7 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff'}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch}; }
 async function cloudPushRoster(){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
   const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
@@ -1283,6 +1325,7 @@ function renderBackupStatus(){
 load(); moveFromHash(); adminFromHash(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
 renderCloudStatus(); renderNotifyCard(); cloudSync();
+setTimeout(autoPunchTick,3000);
 setInterval(cloudSync,25000);
 window.addEventListener('focus',cloudSync);
 </script>
