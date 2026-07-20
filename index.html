@@ -382,7 +382,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260720_235525'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_000220'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -476,10 +476,11 @@ function renderKiosk(){
     if(r&&r.in&&!r.out){cls='working';st='<span class="dot g"></span><span class="st grn">근무중</span>';tm=`출근 ${r.in}`;}
     else if(r&&r.in&&r.out){cls='done';st='<span class="dot p"></span><span class="st pur">퇴근 완료</span>';tm=`출근 ${r.in} · 퇴근 ${r.out}`;}
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
+    const duty=e.duty?` <span class="badge b-duty">${e.duty}</span>`:'';
     const mine=!staffMode||e.id===cc.myEmpId;
     const meBadge=(staffMode&&e.id===cc.myEmpId)?' <span class="badge b-admin">나</span>':'';
     g.insertAdjacentHTML('beforeend',`<div class="emp-card ${cls}${mine?'':' noclick'}" ${mine?`onclick="openPunch('${e.id}')"`:''}>
-      <div class="nm">${e.name}${meBadge}</div><div style="margin-top:5px;">${badge}</div>
+      <div class="nm">${e.name}${meBadge}</div><div style="margin-top:5px;">${badge}${duty}</div>
       <div style="margin-top:8px;">${st}</div><div class="tm">${tm}&nbsp;</div></div>`);
   });
 }
