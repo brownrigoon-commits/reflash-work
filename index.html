@@ -192,6 +192,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <button onclick="payMove(1)">›</button>
     </div>
     <div class="muted" style="margin:0 4px 12px;">근태 기록으로 결근·조퇴가 자동 집계됩니다. 셀을 수정하면 즉시 재계산됩니다. (통상시급 = 월급 ÷ 209시간)</div>
+    <button class="btn ghost wide" style="margin-bottom:12px;" onclick="fillMonthNormal()">📅 이번 달 빈 근무일 모두 정상근무 처리</button>
     <div id="payBody"></div>
     <button class="btn p wide" style="margin-top:14px;" onclick="exportExcel()">📥 급여대장 엑셀 다운로드</button>
     <div class="muted" style="margin-top:8px;text-align:center;">기존 「리플래시_급여_관리대장」 양식 기준으로 생성됩니다</div>
@@ -788,6 +789,29 @@ function calcDaily(e,y,m){
   const base=Math.round(e.hourly*hours);
   const jh=Math.round(e.hourly*e.dailyH*jhW);
   return {hours,base,jhW,jh,total:base+jh,attend:agg.attend};
+}
+function fillMonthNormal(){
+  const y=payDate.getFullYear(),m=payDate.getMonth(),tds=todayStr();
+  const jobs=[];
+  activeEmps().forEach(e=>{
+    const last=new Date(y,m+1,0).getDate();
+    for(let dd=1;dd<=last;dd++){
+      const d=new Date(y,m,dd),ds=fmtD(d);
+      if(ds>=tds)break;                 // 오늘·미래는 제외 (오늘은 실제 출퇴근/자동기록이 처리)
+      if(!isWorkday(e,d))continue;
+      if(recOf(ds,e.id))continue;       // 이미 기록 있는 날 유지
+      jobs.push({ds,e});
+    }
+  });
+  if(!jobs.length){toast('채울 빈 근무일이 없습니다');return;}
+  if(!confirm(`${y}년 ${m+1}월의 빈 근무일 ${jobs.length}건(전 재직 직원, 오늘 이전)을\n정시 출퇴근으로 채웁니다.\n\n결근·지각이 있던 날은 이후 [현황]에서 수정하면 됩니다.\n진행할까요?`))return;
+  jobs.forEach(({ds,e})=>{
+    DB.records[ds]=DB.records[ds]||{};
+    DB.records[ds][e.id]={in:e.schedule.start,out:e.schedule.end,auto:true};
+    queueRec(ds,e.id);
+  });
+  save(); renderPay();
+  toast(jobs.length+'건을 정상근무로 채웠습니다');
 }
 function renderPay(){
   const y=payDate.getFullYear(),m=payDate.getMonth();
