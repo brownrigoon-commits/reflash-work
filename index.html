@@ -77,6 +77,8 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
 .emp-card:active{transform:scale(.97);}
 .emp-card.working{border-color:var(--green);}
 .emp-card.done{opacity:.62;}
+.emp-card.noclick{opacity:.8;cursor:default;}
+.emp-card.noclick:active{transform:none;}
 .emp-card .nm{font-size:16.5px;font-weight:800;}
 .emp-card .st{font-size:12px;margin-top:6px;font-weight:700;}
 .st.gray{color:var(--txt-sub);} .st.grn{color:var(--green);} .st.pur{color:var(--purple);}
@@ -309,6 +311,7 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
     <div style="flex:1;"><label class="f" style="margin-top:0;">출근시간</label><input type="time" id="fStart" value="09:00"></div>
     <div style="flex:1;"><label class="f" style="margin-top:0;">퇴근시간</label><input type="time" id="fEnd" value="18:00"></div>
   </div>
+  <label class="f">휴대폰 번호 <span style="font-weight:400;">(직원 초대 · 본인인증용)</span></label><input id="fPhone" inputmode="numeric" placeholder="010-0000-0000">
   <label class="f">주민등록번호 <span style="font-weight:400;">(급여대장용 · 선택)</span></label><input id="fRrn" placeholder="000000-0000000">
   <label class="f">은행 / 계좌번호 <span style="font-weight:400;">(선택)</span></label>
   <div class="row">
@@ -406,7 +409,11 @@ let punchEmpId=null;
 function recOf(dateS,empId){ return (DB.records[dateS]||{})[empId]||null; }
 function renderKiosk(){
   const ds=todayStr(); let list=activeEmps();
-  const cc=cloudCfg(); if(cc&&cc.role==='staff'&&cc.myEmpId) list=list.filter(e=>e.id===cc.myEmpId);
+  const cc=cloudCfg(); const staffMode=!!(cc&&cc.role==='staff'&&cc.myEmpId);
+  if(staffMode){
+    list=list.filter(e=>(e.role||'staff')!=='admin');           // 임원 숨김
+    list.sort((a,b)=>(a.id===cc.myEmpId?-1:0)-(b.id===cc.myEmpId?-1:0)); // 내 카드 맨 앞
+  }
   const workers=list.filter(e=>{const r=recOf(ds,e.id);return r&&r.in&&!r.out;}).length;
   const came=list.filter(e=>{const r=recOf(ds,e.id);return r&&r.in;}).length;
   document.getElementById('sumLine').innerHTML=`전체 ${list.length}명 중 <span>${workers}명</span> 근무중 · 출근 ${came}명`;
@@ -419,12 +426,16 @@ function renderKiosk(){
     if(r&&r.in&&!r.out){cls='working';st='<span class="dot g"></span><span class="st grn">근무중</span>';tm=`출근 ${r.in}`;}
     else if(r&&r.in&&r.out){cls='done';st='<span class="dot p"></span><span class="st pur">퇴근 완료</span>';tm=`출근 ${r.in} · 퇴근 ${r.out}`;}
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
-    g.insertAdjacentHTML('beforeend',`<div class="emp-card ${cls}" onclick="openPunch('${e.id}')">
-      <div class="nm">${e.name}</div><div style="margin-top:5px;">${badge}</div>
+    const mine=!staffMode||e.id===cc.myEmpId;
+    const meBadge=(staffMode&&e.id===cc.myEmpId)?' <span class="badge b-admin">나</span>':'';
+    g.insertAdjacentHTML('beforeend',`<div class="emp-card ${cls}${mine?'':' noclick'}" ${mine?`onclick="openPunch('${e.id}')"`:''}>
+      <div class="nm">${e.name}${meBadge}</div><div style="margin-top:5px;">${badge}</div>
       <div style="margin-top:8px;">${st}</div><div class="tm">${tm}&nbsp;</div></div>`);
   });
 }
 function openPunch(id){
+  const _c=cloudCfg();
+  if(_c&&_c.role==='staff'&&_c.myEmpId&&id!==_c.myEmpId){toast('본인의 출퇴근만 기록할 수 있습니다');return;}
   punchEmpId=id; const e=emp(id), r=recOf(todayStr(),id);
   document.getElementById('punchName').textContent=e.name;
   document.getElementById('punchInfo').textContent=`근무시간 ${e.schedule.start} ~ ${e.schedule.end}`;
@@ -502,6 +513,10 @@ function monthAgg(e,y,m){
   return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size};
 }
 
+function visEmps(d){
+  const l=activeEmps(d), c=cloudCfg();
+  return (c&&c.role==='staff')?l.filter(e=>(e.role||'staff')!=='admin'):l;
+}
 /* ================== 사업장 현황 ================== */
 let stView='day', stDate=new Date();
 function statusTab(v){ stView=v; document.querySelectorAll('#pg-status .mini-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); renderStatus(); }
@@ -517,7 +532,7 @@ function renderStatus(){
     const ds=fmtD(stDate);
     lb.textContent=`${stDate.getFullYear()}.${String(stDate.getMonth()+1).padStart(2,'0')}.${String(stDate.getDate()).padStart(2,'0')} (${DAYNM[stDate.getDay()]})`;
     let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원명</th><th>출근</th><th>퇴근</th><th>근로시간</th><th>상태</th><th></th></tr>';
-    activeEmps(ds).forEach(e=>{
+    visEmps(ds).forEach(e=>{
       const r=recOf(ds,e.id), st=dayStatus(e,new Date(stDate));
       const wm=workedMin(e,r);
       h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${r&&r.in?r.in:'-'}</td><td>${r&&r.out?r.out:'-'}</td>
@@ -535,7 +550,7 @@ function renderStatus(){
     let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th>';
     for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);h+=`<th>${DAYNM[d.getDay()]}<br><span style="font-weight:400;">${d.getDate()}</span></th>`;}
     h+='</tr>';
-    activeEmps().forEach(e=>{
+    visEmps().forEach(e=>{
       h+=`<tr><td style="font-weight:700;">${e.name}</td>`;
       for(let i=0;i<7;i++){
         const d=new Date(mon);d.setDate(mon.getDate()+i);
@@ -551,7 +566,7 @@ function renderStatus(){
     const y=stDate.getFullYear(),m=stDate.getMonth();
     lb.textContent=`${y}년 ${m+1}월`;
     let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>총근로</th></tr>';
-    activeEmps().forEach(e=>{
+    visEmps().forEach(e=>{
       const a=monthAgg(e,y,m);
       h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${a.attend}일</td>
         <td>${a.lateCnt?`<span class="tag late">${a.lateCnt}</span>`:'-'}</td>
@@ -620,6 +635,7 @@ function openEmpForm(id){
   document.getElementById('fJoin').value=e?e.joinDate:todayStr();
   document.getElementById('fStart').value=e?e.schedule.start:'09:00';
   document.getElementById('fEnd').value=e?e.schedule.end:'18:00';
+  document.getElementById('fPhone').value=e?(e.phone||''):'';
   document.getElementById('fRrn').value=e?(e.rrn||''):'';
   document.getElementById('fBank').value=e?(e.bank||''):'';
   document.getElementById('fAcct').value=e?(e.acct||''):'';
@@ -652,6 +668,7 @@ function saveEmp(){
     hourly:unc(document.getElementById('fHourly').value),
     dailyH:+document.getElementById('fDailyH').value||8,
     joinDate:document.getElementById('fJoin').value||todayStr(),
+    phone:document.getElementById('fPhone').value.trim(),
     rrn:document.getElementById('fRrn').value.trim(),
     bank:document.getElementById('fBank').value.trim(),
     acct:document.getElementById('fAcct').value.trim(),
@@ -979,7 +996,7 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff'}; }
 async function cloudPushRoster(){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
   const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
@@ -1037,7 +1054,7 @@ function pushEvent(kind,empId,hm){
   if(!cloudOn())return;
   const e=emp(empId); if(!e)return;
   const ts=Date.now();
-  const ev={k:kind,i:empId,n:e.name,t:hm,d:todayStr(),ts};
+  const ev={k:kind,i:empId,n:e.name,t:hm,d:todayStr(),ts,r:(e.role==='admin'?'a':'s')};
   cfetch('/events/e'+ts+Math.random().toString(36).slice(2,5),{method:'PUT',body:JSON.stringify(ev)}).catch(()=>{});
   if(notifyCache&&notifyCache.ntfy){
     const msg=`${e.name}님이 ${kind==='in'?'출근':'퇴근'}했습니다 (${hm})`;
@@ -1046,6 +1063,7 @@ function pushEvent(kind,empId,hm){
 }
 function shouldNotify(ev){
   const c=cloudCfg(); if(!c)return false;
+  if(c.role==='staff'&&ev.r==='a')return false; // 임원 출퇴근은 직원에게 비노출
   const me=c.role==='staff'?c.myEmpId:'_admin';
   if(c.role==='staff'&&ev.i===c.myEmpId)return false; // 본인 기록은 알림 제외
   const rec=notifyCache&&notifyCache.recips;
@@ -1161,7 +1179,8 @@ function copyInvite(){
   const c=cloudCfg();
   if(!c||c.role!=='admin'){toast('먼저 설정 탭에서 클라우드 연동을 켜 주세요');return;}
   const e=emp(editEmpId);
-  const payload=btoa(unescape(encodeURIComponent(JSON.stringify({u:c.url,r:c.roomId,i:editEmpId,n:e.name}))));
+  if(!e.phone||e.phone.replace(/\D/g,'').length<10){toast('먼저 이 직원의 휴대폰 번호를 입력하고 저장해 주세요');return;}
+  const payload=btoa(unescape(encodeURIComponent(JSON.stringify({u:c.url,r:c.roomId,i:editEmpId,n:e.name,v:pinHash(e.phone.replace(/\D/g,''))}))));
   const link=location.origin+location.pathname+'#join='+payload;
   const msg=`[리플래시 work] ${e.name}님 출퇴근 앱 초대\n아래 링크를 눌러 접속한 뒤, 화면을 즐겨찾기(홈 화면 추가) 해두세요.\n${link}`;
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -1177,6 +1196,16 @@ function joinFromHash(){
     if(!(p.u&&p.r&&p.i))return;
     const c=cloudCfg();
     if(c&&c.role==='admin'){ history.replaceState(null,'',location.pathname); toast('관리자 기기에서는 초대 링크가 적용되지 않습니다'); return; }
+    if(p.v){
+      let ok=false;
+      for(let t=0;t<3;t++){
+        const num=prompt((p.n||'직원')+'님 본인 확인 — 휴대폰 번호를 입력하세요 (숫자만)');
+        if(num===null)return;
+        if(pinHash(num.replace(/\D/g,''))===p.v){ok=true;break;}
+        alert('번호가 일치하지 않습니다. 다시 입력해 주세요. ('+(2-t)+'회 남음)');
+      }
+      if(!ok){alert('본인 확인에 실패했습니다. 관리자에게 문의해 주세요.');return;}
+    }
     DB.settings.cloud={url:p.u,roomId:p.r,role:'staff',myEmpId:p.i};
     save();
     history.replaceState(null,'',location.pathname);
