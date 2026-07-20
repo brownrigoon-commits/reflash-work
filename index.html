@@ -49,6 +49,7 @@ h2.sec{font-size:19px;font-weight:800;margin:6px 2px 14px;}
 h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 .card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(55,36,112,.05);}
 .btn{display:inline-block;border:none;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;}
+#pg-set button:disabled,#pg-set input:disabled{opacity:.35;pointer-events:none;}
 .btn.p{background:var(--purple);color:#fff;}
 .btn.y{background:var(--yellow);color:var(--purple-dark);}
 .btn.ghost{background:#fff;border:1.5px solid var(--purple);color:var(--purple);}
@@ -201,6 +202,10 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <!-- ============ 설정 ============ -->
   <div class="page" id="pg-set">
     <h2 class="sec">설정</h2>
+    <div id="setLockBanner" class="card" style="display:none;background:#fff8e6;border:1.5px solid #f0c36d;">
+      <div style="font-weight:800;margin-bottom:4px;">🔒 공동 관리자 기기</div>
+      <div class="muted">설정 변경은 제작자(원본) 기기에서만 가능합니다. 여기서는 열람만 됩니다.<br>출퇴근·현황·직원관리(직원 추가 포함)·급여는 모두 사용할 수 있어요.</div>
+    </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">🔐 관리자 비밀번호 변경</h3>
       <input type="password" id="setPin" placeholder="새 비밀번호 (4자리 숫자)" maxlength="4" inputmode="numeric">
@@ -231,7 +236,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
         <div class="muted" style="margin-top:8px;">만드는 방법: 앱 폴더의 <b>클라우드_연동_가이드.txt</b> 참고 (약 5분)<br>
         연동하면 직원관리에서 [초대 링크 복사]로 직원을 초대할 수 있고,<br>
         직원들이 각자 폰에서 출퇴근을 누르면 이 기기로 모두 모입니다.<br>
-        ※ 클라우드에는 이름·출퇴근 시각만 저장됩니다 (주민번호·급여·계좌 제외)</div>
+        ※ 직원 폰에는 이름·출퇴근 시각만 보입니다. 급여·주민번호·계좌는 암호화되어 관리자 기기끼리만 공유됩니다.</div>
       </div>
       <button class="btn y wide" style="margin-top:6px;" onclick="adminDeviceLink()">🖥️ 내 컴퓨터에서도 관리자로 쓰기 (링크 복사)</button>
       <button id="cloudOff" class="btn red wide" style="display:none;margin-top:6px;" onclick="cloudDisable()">연동 해제</button>
@@ -417,7 +422,7 @@ function go(p,needAdmin){
   if(p==='status')renderStatus();
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
-  if(p==='set')renderNotifyCard();
+  if(p==='set'){renderNotifyCard();applySetLock();}
   window.scrollTo(0,0);
 }
 function checkPin(){
@@ -653,9 +658,8 @@ function saveRec(){
   const i=document.getElementById('recIn').value,o=document.getElementById('recOut').value;
   DB.records[recDate]=DB.records[recDate]||{};
   if(!i&&!o){
-    const _e=emp(recEmpId);
-    if(_e&&_e.autoPunch)DB.records[recDate][recEmpId]={off:true,manual:true}; // 자동입력 끔(결근)
-    else delete DB.records[recDate][recEmpId];
+    // 빈 값 저장 = 결근 처리. 삭제 대신 표식을 남겨 다른 기기와 동기화 시 기록이 되살아나지 않게 함
+    DB.records[recDate][recEmpId]={off:true,manual:true};
   }
   else DB.records[recDate][recEmpId]={in:i||null,out:o||null,manual:true};
   save(); queueRec(recDate,recEmpId); closeM('mdRec'); renderStatus(); toast('저장되었습니다');
@@ -738,7 +742,7 @@ function saveEmp(){
   if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
   if(editEmpId){ Object.assign(emp(editEmpId),o); }
   else{ DB.employees.push({id:'e'+Date.now(),leaveDate:null,role:'staff',...o}); }
-  save(); cloudPushRoster(); closeM('mdEmp'); renderEmpList(); toast('저장되었습니다');
+  save(); cloudPushRoster(); cloudPushPriv(); closeM('mdEmp'); renderEmpList(); toast('저장되었습니다');
 }
 function retireEmp(){
   const e=emp(editEmpId);
@@ -751,7 +755,7 @@ function retireEmp(){
 let payDate=new Date();
 function payMove(d){ payDate.setMonth(payDate.getMonth()+d); renderPay(); }
 function ov(ym,id){ return (DB.overrides[ym]||{})[id]||{}; }
-function setOv(ym,id,k,v){ DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; DB.overrides[ym][id][k]=v; save(); }
+function setOv(ym,id,k,v){ DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; DB.overrides[ym][id][k]=v; save(); schedulePrivPush(); }
 function floor10(n){ return Math.floor(n/10)*10; }
 function calcRegular(e,y,m){
   const ym=`${y}-${String(m+1).padStart(2,'0')}`;
@@ -992,12 +996,14 @@ function lockAdmin(){
   go('kiosk');
 }
 function changePin(){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
   const v=document.getElementById('setPin').value;
   if(!/^\d{4}$/.test(v)){toast('4자리 숫자로 입력해 주세요');return;}
   DB.settings.pin=v; save(); document.getElementById('setPin').value='';
   toast('비밀번호가 변경되었습니다');
 }
 function makeMoveLink(){
+  if(setLocked()){toast('제작자 기기에서만 사용할 수 있습니다');return;}
   try{
     const payload=btoa(unescape(encodeURIComponent(JSON.stringify(DB))));
     if(payload.length>60000){toast('데이터가 커서 링크로는 어렵습니다. [백업 다운로드]를 이용해 주세요');return;}
@@ -1011,10 +1017,12 @@ function makeMoveLink(){
 }
 function pinHash(s){let h=5381;for(const c of String(s))h=((h<<5)+h+c.charCodeAt(0))>>>0;return h.toString(36);}
 function adminDeviceLink(){
+  if(setLocked()){toast('관리자 링크는 제작자 기기에서만 만들 수 있습니다');return;}
   try{
     const c=cloudCfg();
+    if(c&&c.role==='admin'&&!c.key){ c.key=genKey(); save(); cloudPushPriv(); } // 기존 기기 업그레이드 시 키 생성
     const payload={db:DB,ph:pinHash(DB.settings.pin)};
-    if(c&&c.role==='admin')payload.cloud={url:c.url,roomId:c.roomId};
+    if(c&&c.role==='admin')payload.cloud={url:c.url,roomId:c.roomId,key:c.key};
     const b=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
     if(b.length>60000){toast('데이터가 커서 링크로는 어렵습니다. [백업 다운로드]를 이용해 주세요');return;}
     const link=location.origin+location.pathname+'#admin='+b;
@@ -1033,13 +1041,17 @@ function adminFromHash(){
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     if(!(p.db&&p.ph))return;
     const c0=cloudCfg();
-    // 이미 등록된 기기(홈 화면 앱 재실행 등)는 비밀번호 없이 그대로 통과
-    if(p.cloud&&c0&&c0.role==='admin'&&c0.roomId===p.cloud.roomId)return;
+    // 이미 등록된 기기(홈 화면 앱 재실행 등)는 비밀번호 없이 그대로 통과 (새 링크의 암호키만 흡수)
+    if(p.cloud&&c0&&c0.role==='admin'&&c0.roomId===p.cloud.roomId){
+      if(p.cloud.key&&!c0.key){ c0.key=p.cloud.key; save(); }
+      return;
+    }
     const pin=prompt('관리자 기기 등록 — 관리자 비밀번호(4자리)를 입력하세요');
     if(pin===null)return;
     if(pinHash(pin)!==p.ph){alert('비밀번호가 올바르지 않습니다.');return;}
     DB=p.db;
-    if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin'};
+    // 링크로 추가된 기기는 공동 관리자: 모든 데이터 공유, 설정 탭만 잠금
+    if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin',owner:false,key:p.cloud.key||null};
     save();
     setTimeout(()=>toast('관리자 기기 등록 완료! 이 화면 그대로 [홈 화면에 추가] 하세요'),400);
   }catch(e){ history.replaceState(null,'',location.pathname); toast('관리자 링크를 읽지 못했습니다'); }
@@ -1067,6 +1079,7 @@ function backupJson(){
   toast('백업 파일이 다운로드되었습니다');
 }
 function restoreJson(inp){
+  if(setLocked()){toast('제작자 기기에서만 복원할 수 있습니다');inp.value='';return;}
   const f=inp.files[0]; if(!f)return;
   const rd=new FileReader();
   rd.onload=()=>{ try{
@@ -1087,6 +1100,53 @@ async function cfetch(path,opt){
   return r.json();
 }
 function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch,phone:e.phone||''}; }
+/* ── 관리자 기기 구분: 소유자(제작자·연동을 켠 기기) vs 링크로 추가된 공동 관리자 ── */
+function isOwnerDev(){ const c=cloudCfg(); if(!c)return true; if(c.role==='staff')return false; return c.owner!==false; }
+function setLocked(){ const c=cloudCfg(); return !!(c&&c.role==='admin'&&c.owner===false); }
+function applySetLock(){
+  const locked=setLocked();
+  const ban=document.getElementById('setLockBanner'); if(ban)ban.style.display=locked?'block':'none';
+  const ALLOW=['backupJson','enableBrowserNotif','copyNtfyGuide'];
+  document.querySelectorAll('#pg-set button').forEach(b=>{
+    const oc=b.getAttribute('onclick')||'';
+    b.disabled=locked&&!ALLOW.some(fn=>oc.includes(fn));
+  });
+  document.querySelectorAll('#pg-set input').forEach(i=>{ if(i.type!=='file')i.disabled=locked; });
+}
+/* ── 관리자 전용 데이터(급여·주민번호·계좌·급여탭 수정값) 암호화 동기화 ──
+   암호키는 클라우드에 올라가지 않고 관리자 링크로만 전달 → 직원 기기는 복호화 불가 */
+function genKey(){ const a=new Uint8Array(32); crypto.getRandomValues(a); return [...a].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+function b64e(a){ let s=''; a.forEach(b=>s+=String.fromCharCode(b)); return btoa(s); }
+function b64d(s){ return new Uint8Array([...atob(s)].map(c=>c.charCodeAt(0))); }
+async function privAesKey(){
+  const c=cloudCfg(); if(!c||!c.key||!(crypto&&crypto.subtle))return null;
+  const raw=new Uint8Array(c.key.match(/../g).map(h=>parseInt(h,16)));
+  return crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);
+}
+async function privEncrypt(obj){
+  const k=await privAesKey(); if(!k)return null;
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const buf=await crypto.subtle.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify(obj)));
+  return {iv:b64e(iv),ct:b64e(new Uint8Array(buf))};
+}
+async function privDecrypt(p){
+  try{
+    const k=await privAesKey(); if(!k||!p||!p.iv||!p.ct)return null;
+    const buf=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(p.iv)},k,b64d(p.ct));
+    return JSON.parse(new TextDecoder().decode(buf));
+  }catch(e){ return null; }
+}
+function privEmp(e){ return {salary:e.salary||0,hourly:e.hourly||0,dailyH:e.dailyH||8,rrn:e.rrn||'',bank:e.bank||'',acct:e.acct||''}; }
+async function cloudPushPriv(){
+  const c=cloudCfg(); if(!cloudOn()||!c||c.role!=='admin')return;
+  if(!c.key){ if(isOwnerDev()){ c.key=genKey(); save(); } else return; }
+  const emps={}; DB.employees.forEach(e=>emps[e.id]=privEmp(e));
+  const enc=await privEncrypt({emps,overrides:DB.overrides||{},ts:Date.now()});
+  if(!enc)return;
+  try{ await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)}); }catch(e){ console.warn('priv push 실패',e); }
+}
+let privTimer=null;
+function schedulePrivPush(){ clearTimeout(privTimer); privTimer=setTimeout(cloudPushPriv,800); }
 async function cloudPushRoster(){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
   const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
@@ -1116,7 +1176,14 @@ async function cloudSync(){
   try{
     await flushPending();
     const room=await cfetch('')||{};
-    if(room.recs)DB.records=room.recs;
+    { // 기록 병합: 클라우드 우선, 이 기기에만 있는 기록은 보존 후 클라우드로 올림 (기기 간 통일)
+      const cr=room.recs||{}; let localOnly=0;
+      Object.entries(DB.records||{}).forEach(([d,em])=>Object.entries(em||{}).forEach(([id,r])=>{
+        if(!(cr[d]&&cr[d][id]!==undefined)){ (cr[d]=cr[d]||{})[id]=r; localOnly++; }
+      }));
+      DB.records=cr;
+      if(localOnly>0){ try{ await cfetch('/recs',{method:'PUT',body:JSON.stringify(cr)}); }catch(e){} }
+    }
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
       DB.employees=Object.entries(room.emps).map(([id,e])=>{
@@ -1124,6 +1191,16 @@ async function cloudSync(){
         return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||'')}; // 전화번호는 비어있지 않은 값 우선 (지워짐 방지)
       });
+    }
+    // 관리자 전용 데이터 수신 (급여·주민번호·계좌·급여탭 수정값)
+    if(cloudCfg().role==='admin'){
+      if(room.priv){
+        const pv=await privDecrypt(room.priv);
+        if(pv&&pv.emps){
+          DB.employees.forEach(e=>{ if(pv.emps[e.id])Object.assign(e,pv.emps[e.id]); });
+          if(pv.overrides)DB.overrides=pv.overrides;
+        }
+      } else if(cloudCfg().key||isOwnerDev()){ cloudPushPriv(); } // 클라우드에 아직 없으면 최초 업로드 (소유자는 키 자동 생성)
     }
     notifyCache=room.notify||null;
     // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
@@ -1138,8 +1215,13 @@ async function cloudSync(){
     localStorage.setItem(LS,JSON.stringify(DB));
     renderCloudStatus();
     if(document.getElementById('pg-kiosk').classList.contains('on'))renderKiosk();
-    if(document.getElementById('pg-status').classList.contains('on'))renderStatus();
-    if(document.getElementById('pg-set').classList.contains('on'))renderNotifyCard();
+    const _ae=document.activeElement, _typing=_ae&&['INPUT','SELECT','TEXTAREA'].includes(_ae.tagName);
+    if(!_typing){ // 입력 중일 때는 화면을 다시 그리지 않음
+      if(document.getElementById('pg-status').classList.contains('on'))renderStatus();
+      if(document.getElementById('pg-emp').classList.contains('on'))renderEmpList();
+      if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
+    }
+    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
   syncBusy=false;
 }
@@ -1216,6 +1298,7 @@ function renderNotifyCard(){
     info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${notifyCache.ntfy}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
 }
 async function saveNotify(){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
   if(!cloudOn()){toast('먼저 클라우드 연동을 켜 주세요');return;}
   const recips={};
   document.querySelectorAll('#notifyList input[type=checkbox]').forEach(cb=>{recips[cb.dataset.nid]=cb.checked;});
@@ -1240,11 +1323,12 @@ async function cloudEnable(){
   const url=document.getElementById('cloudUrl').value.trim().replace(/\/+$/,'');
   if(!/^https?:\/\//.test(url)){toast('Firebase 데이터베이스 URL을 입력해 주세요');return;}
   const roomId='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
-  DB.settings.cloud={url,roomId,role:'admin'};
+  DB.settings.cloud={url,roomId,role:'admin',owner:true,key:genKey()};
   try{
     const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
     await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)});
     await cfetch('/recs',{method:'PUT',body:JSON.stringify(DB.records||{})});
+    await cloudPushPriv();
   }catch(e){
     DB.settings.cloud=null; renderCloudStatus();
     toast('연동 실패 — URL과 데이터베이스 규칙을 확인해 주세요'); return;
@@ -1253,6 +1337,7 @@ async function cloudEnable(){
   toast('클라우드 연동 완료! 직원관리에서 초대 링크를 보내세요');
 }
 function cloudDisable(){
+  if(setLocked()){toast('제작자 기기에서만 해제할 수 있습니다');return;}
   if(!confirm('클라우드 연동을 해제할까요?\n(클라우드의 기록은 남아있고, 이 기기는 단독 모드가 됩니다)'))return;
   DB.settings.cloud=null; save(); renderCloudStatus(); toast('연동이 해제되었습니다');
 }
@@ -1309,6 +1394,7 @@ function joinFromHash(){
 
 /* ================== 자동백업(폴더 연결) & 세무메일 ================== */
 function saveTaxMail(){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
   DB.settings.taxEmail=document.getElementById('setTaxMail').value.trim();
   save(); toast('이메일이 저장되었습니다');
 }
@@ -1360,7 +1446,9 @@ function renderBackupStatus(){
 }
 
 /* ================== init ================== */
-load(); moveFromHash(); adminFromHash(); joinFromHash();
+load();
+{ const _c=cloudCfg(); if(_c&&_c.role==='admin'&&_c.owner===undefined)_c.owner=true; } // 기존 관리자 기기는 소유자로 승격
+moveFromHash(); adminFromHash(); joinFromHash();
 adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
 tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
