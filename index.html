@@ -200,6 +200,10 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
         <button class="btn ghost" style="flex:1;" onclick="document.getElementById('restoreFile').click()">백업 복원</button>
       </div>
       <input type="file" id="restoreFile" accept=".json" style="display:none;" onchange="restoreJson(this)">
+      <button class="btn y wide" style="margin-top:10px;" onclick="makeMoveLink()">📲 다른 브라우저로 옮기기 (이사 링크 복사)</button>
+      <div class="muted" style="margin-top:8px;">카톡 브라우저 → 사파리/크롬으로 데이터를 통째로 옮길 때:<br>
+      ① 위 버튼 클릭(링크 복사됨) ② 카톡 "나와의 채팅"에 붙여넣기 전송<br>
+      ③ 그 링크를 길게 눌러 "Safari(브라우저)로 열기" ④ 가져오기 확인 → 끝!</div>
     </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">☁️ 클라우드 연동 — 직원 폰으로 출퇴근</h3>
@@ -887,6 +891,32 @@ function changePin(){
   DB.settings.pin=v; save(); document.getElementById('setPin').value='';
   toast('비밀번호가 변경되었습니다');
 }
+function makeMoveLink(){
+  try{
+    const payload=btoa(unescape(encodeURIComponent(JSON.stringify(DB))));
+    if(payload.length>60000){toast('데이터가 커서 링크로는 어렵습니다. [백업 다운로드]를 이용해 주세요');return;}
+    const link=location.origin+location.pathname+'#move='+payload;
+    const msg='[리플래시 work 데이터 이사]\n아래 링크를 사파리(또는 크롬)로 열면 이 기기의 직원명단·기록이 그대로 옮겨집니다.\n'+link;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(msg).then(()=>toast('이사 링크 복사 완료! 카톡 나와의 채팅에 붙여넣으세요'))
+        .catch(()=>prompt('아래 내용을 복사하세요', msg));
+    } else prompt('아래 내용을 복사하세요', msg);
+  }catch(e){toast('링크 생성 실패');}
+}
+function moveFromHash(){
+  const m=location.hash.match(/#move=(.+)/);
+  if(!m)return;
+  try{
+    const d=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if(!d.employees||!d.settings)throw 0;
+    history.replaceState(null,'',location.pathname);
+    const cnt=(d.employees||[]).filter(e=>!e.leaveDate).length;
+    if(confirm(`데이터 이사 링크입니다.\n직원 ${cnt}명의 명단과 기록을 이 브라우저로 가져올까요?\n(이 브라우저의 기존 데이터는 덮어씁니다)`)){
+      DB=d; save();
+      setTimeout(()=>toast('데이터를 가져왔습니다! 홈 화면에 추가해 두세요'),400);
+    }
+  }catch(e){ history.replaceState(null,'',location.pathname); toast('이사 링크를 읽지 못했습니다'); }
+}
 function backupJson(){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a');
@@ -1172,7 +1202,7 @@ function renderBackupStatus(){
 }
 
 /* ================== init ================== */
-load(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
+load(); moveFromHash(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
 renderCloudStatus(); renderNotifyCard(); cloudSync();
 setInterval(cloudSync,25000);
