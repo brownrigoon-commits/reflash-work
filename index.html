@@ -465,7 +465,7 @@ function openPunch(id){
   if(_c&&_c.role==='staff'&&_c.myEmpId&&id!==_c.myEmpId){toast('본인의 출퇴근만 기록할 수 있습니다');return;}
   punchEmpId=id; const e=emp(id), r=recOf(todayStr(),id);
   document.getElementById('punchName').textContent=e.name;
-  document.getElementById('punchInfo').textContent=`근무시간 ${e.schedule.start} ~ ${e.schedule.end}`;
+  document.getElementById('punchInfo').textContent=`근무시간 ${e.schedule.start} ~ ${e.schedule.end} · 일찍/늦게 눌러도 정시로 기록됩니다`;
   const st=document.getElementById('punchState');
   const bi=document.getElementById('btnIn'), bo=document.getElementById('btnOut');
   if(!r||!r.in){ st.innerHTML='<span class="tag hol">아직 출근 전입니다</span>'; bi.disabled=false; bo.disabled=true; }
@@ -474,12 +474,21 @@ function openPunch(id){
   tick(); openM('mdPunch');
 }
 function doPunch(kind){
-  const ds=todayStr(), n=new Date();
-  const hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  const ds=todayStr(), n=new Date(), e=emp(punchEmpId);
+  let hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
   DB.records[ds]=DB.records[ds]||{};
   const r=DB.records[ds][punchEmpId]||{};
-  if(kind==='in'){ if(r.in){toast('이미 출근 처리되었습니다');return;} r.in=hm; toast(`${emp(punchEmpId).name}님 출근 완료! (${hm})`);}
-  else{ if(!r.in){toast('출근 기록이 없습니다');return;} if(r.out){toast('이미 퇴근 처리되었습니다');return;} r.out=hm; toast(`${emp(punchEmpId).name}님 퇴근 완료! 수고하셨습니다 (${hm})`);}
+  if(kind==='in'){
+    if(r.in){toast('이미 출근 처리되었습니다');return;}
+    if(toMin(hm)<toMin(e.schedule.start))hm=e.schedule.start; // 일찍 눌러도 정시 출근으로 기록
+    r.in=hm; toast(`${e.name}님 출근 완료! (${hm})`);
+  }
+  else{
+    if(!r.in){toast('출근 기록이 없습니다');return;}
+    if(r.out){toast('이미 퇴근 처리되었습니다');return;}
+    if(toMin(hm)>toMin(e.schedule.end))hm=e.schedule.end; // 늦게 눌러도 정시 퇴근 — 야근은 관리자가 [현황→수정]에서만 입력
+    r.out=hm; toast(`${e.name}님 퇴근 완료! 수고하셨습니다 (${hm})`);
+  }
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
 }
 
@@ -740,14 +749,15 @@ function saveEmp(){
   };
   if(t!=='daily'&&!o.salary){toast('급여를 입력해 주세요');return;}
   if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
+  let savedId=editEmpId;
   if(editEmpId){ Object.assign(emp(editEmpId),o); }
-  else{ DB.employees.push({id:'e'+Date.now(),leaveDate:null,role:'staff',...o}); }
-  save(); cloudPushRoster(); cloudPushPriv(); closeM('mdEmp'); renderEmpList(); toast('저장되었습니다');
+  else{ savedId='e'+Date.now(); DB.employees.push({id:savedId,leaveDate:null,role:'staff',...o}); }
+  save(); cloudPushRoster(savedId); cloudPushPriv(savedId); closeM('mdEmp'); renderEmpList(); toast('저장되었습니다');
 }
 function retireEmp(){
   const e=emp(editEmpId);
   if(confirm(`${e.name}님을 오늘(${todayStr()}) 자로 퇴사 처리할까요?\n기록은 삭제되지 않습니다.`)){
-    e.leaveDate=todayStr(); save(); cloudPushRoster(); closeM('mdEmp'); renderEmpList(); toast('퇴사 처리되었습니다');
+    e.leaveDate=todayStr(); save(); cloudPushRoster(editEmpId); closeM('mdEmp'); renderEmpList(); toast('퇴사 처리되었습니다');
   }
 }
 
@@ -1046,6 +1056,11 @@ function adminFromHash(){
       if(p.cloud.key&&!c0.key){ c0.key=p.cloud.key; save(); }
       return;
     }
+    // 옛 형식 링크(동기화 키 없음)를 데이터 있는 기기에서 열면 통째로 되돌아가는 사고 방지
+    const oldLink=!(p.cloud&&p.cloud.key);
+    if(oldLink&&((DB.employees&&DB.employees.length)||c0)){
+      if(!confirm('⚠️ 오래된 관리자 링크입니다.\n이 링크의 옛 복사본으로 덮어쓰면 최근 내용이 사라질 수 있습니다.\n\n[취소]를 누르고, 제작자 폰의 [설정 → 관리자 링크 복사]로 새 링크를 받아 여세요.\n\n그래도 덮어쓸까요?')){ history.replaceState(null,'',location.pathname); return; }
+    }
     const pin=prompt('관리자 기기 등록 — 관리자 비밀번호(4자리)를 입력하세요');
     if(pin===null)return;
     if(pinHash(pin)!==p.ph){alert('비밀번호가 올바르지 않습니다.');return;}
@@ -1137,19 +1152,48 @@ async function privDecrypt(p){
   }catch(e){ return null; }
 }
 function privEmp(e){ return {salary:e.salary||0,hourly:e.hourly||0,dailyH:e.dailyH||8,rrn:e.rrn||'',bank:e.bank||'',acct:e.acct||''}; }
-async function cloudPushPriv(){
+// 급여탭 수정값 병합: base 위에 over를 셀 단위로 얹음 (over 우선)
+function mergeOv(base,over){
+  const out=JSON.parse(JSON.stringify(base||{}));
+  Object.entries(over||{}).forEach(([ym,m])=>{ out[ym]=out[ym]||{}; Object.entries(m).forEach(([id,cells])=>{ out[ym][id]={...(out[ym][id]||{}),...cells}; }); });
+  return out;
+}
+async function cloudPushPriv(editedId){
   const c=cloudCfg(); if(!cloudOn()||!c||c.role!=='admin')return;
   if(!c.key){ if(isOwnerDev()){ c.key=genKey(); save(); } else return; }
-  const emps={}; DB.employees.forEach(e=>emps[e.id]=privEmp(e));
-  const enc=await privEncrypt({emps,overrides:DB.overrides||{},ts:Date.now()});
+  // 덮어쓰기 금지: 클라우드의 기존 값을 읽어 병합. 빈 값(0원 등)이 실제 값을 지우지 못하게 함
+  let cur=null; try{ cur=await privDecrypt(await cfetch('/priv')); }catch(e){}
+  const emps=(cur&&cur.emps)||{};
+  DB.employees.forEach(e=>{
+    const l=privEmp(e), cl=emps[e.id]||{};
+    emps[e.id]= e.id===editedId ? l : {
+      salary:cl.salary||l.salary||0, hourly:cl.hourly||l.hourly||0, dailyH:cl.dailyH||l.dailyH||8,
+      rrn:cl.rrn||l.rrn||'', bank:cl.bank||l.bank||'', acct:cl.acct||l.acct||''
+    };
+  });
+  const enc=await privEncrypt({emps,overrides:mergeOv((cur&&cur.overrides),DB.overrides),ts:Date.now()});
   if(!enc)return;
   try{ await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)}); }catch(e){ console.warn('priv push 실패',e); }
 }
 let privTimer=null;
 function schedulePrivPush(){ clearTimeout(privTimer); privTimer=setTimeout(cloudPushPriv,800); }
-async function cloudPushRoster(){
+async function cloudPushRoster(editedId){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
-  const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
+  // 덮어쓰기 금지: 클라우드 명단을 먼저 읽어 병합. 빈 값이 실제 값을 지우지 못하게 함
+  let cloud={}; try{ cloud=await cfetch('/emps')||{}; }catch(e){}
+  const localById={}; DB.employees.forEach(e=>localById[e.id]=sanitizeEmp(e));
+  const obj={};
+  new Set([...Object.keys(cloud),...Object.keys(localById)]).forEach(id=>{
+    const l=localById[id], c=cloud[id];
+    let base;
+    if(!c)base=l;                       // 이 기기에만 있는 직원 → 추가
+    else if(!l)base=c;                  // 클라우드에만 있는 직원 → 보존 (절대 삭제 안 함)
+    else if(id===editedId)base={...c,...l}; // 방금 수정한 직원: 이 기기 값 우선
+    else base={...l,...c};              // 그 외: 클라우드(최신) 우선
+    // 전화번호는 어느 쪽이든 비어있지 않은 값이 항상 이김
+    base.phone=(id===editedId?((l&&l.phone)||(c&&c.phone)):((c&&c.phone)||(l&&l.phone)))||'';
+    obj[id]=base;
+  });
   try{ await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)}); }catch(e){console.warn('roster push 실패',e);}
 }
 function queueRec(date,empId){
@@ -1191,16 +1235,25 @@ async function cloudSync(){
         return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||'')}; // 전화번호는 비어있지 않은 값 우선 (지워짐 방지)
       });
+      // 이 기기에만 있는 직원은 버리지 않고 유지 + 클라우드에 올림
+      const cloudIds=new Set(Object.keys(room.emps));
+      const extras=Object.values(local).filter(e=>!cloudIds.has(e.id));
+      if(extras.length){ DB.employees.push(...extras); cloudPushRoster(); }
     }
     // 관리자 전용 데이터 수신 (급여·주민번호·계좌·급여탭 수정값)
     if(cloudCfg().role==='admin'){
       if(room.priv){
         const pv=await privDecrypt(room.priv);
         if(pv&&pv.emps){
-          DB.employees.forEach(e=>{ if(pv.emps[e.id])Object.assign(e,pv.emps[e.id]); });
-          if(pv.overrides)DB.overrides=pv.overrides;
+          // 병합 수신: 클라우드의 비어있지 않은 값만 반영 (빈 값이 이 기기 값을 지우지 못함)
+          DB.employees.forEach(e=>{
+            const p=pv.emps[e.id]; if(!p)return;
+            e.salary=p.salary||e.salary||0; e.hourly=p.hourly||e.hourly||0; e.dailyH=p.dailyH||e.dailyH||8;
+            e.rrn=p.rrn||e.rrn||''; e.bank=p.bank||e.bank||''; e.acct=p.acct||e.acct||'';
+          });
+          DB.overrides=mergeOv(DB.overrides,pv.overrides); // 급여탭 수정값: 클라우드 셀 우선, 로컬 전용 셀 유지
         }
-      } else if(cloudCfg().key||isOwnerDev()){ cloudPushPriv(); } // 클라우드에 아직 없으면 최초 업로드 (소유자는 키 자동 생성)
+      } else if(isOwnerDev()){ cloudPushPriv(); } // 클라우드에 아직 없으면 소유자 기기만 최초 업로드 (키 자동 생성)
     }
     notifyCache=room.notify||null;
     // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
