@@ -131,7 +131,7 @@ html,body{overflow-x:hidden;}
 body.no-scroll{overflow:hidden;touch-action:none;}
 .modal{position:relative;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;}
 .row input,.row>div{min-width:0;}
-.modal-back{position:sticky;top:6px;margin:-4px 0 -38px -2px;display:block;width:38px;height:38px;border:none;border-radius:50%;background:var(--purple-light);color:var(--purple);font-size:22px;font-weight:800;cursor:pointer;line-height:1;z-index:5;box-shadow:0 2px 8px rgba(55,36,112,.25);}
+.modal-back{position:-webkit-sticky;position:sticky;top:2px;margin:0 0 10px -2px;display:block;width:40px;height:40px;border:none;border-radius:50%;background:var(--purple);color:#fff;font-size:22px;font-weight:800;cursor:pointer;line-height:1;z-index:9;box-shadow:0 3px 10px rgba(55,36,112,.35);}
 </style>
 </head>
 <body>
@@ -204,6 +204,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <h3 style="font-size:15px;margin-bottom:10px;">🔐 관리자 비밀번호 변경</h3>
       <input type="password" id="setPin" placeholder="새 비밀번호 (4자리 숫자)" maxlength="4" inputmode="numeric">
       <button class="btn p wide" style="margin-top:10px;" onclick="changePin()">변경하기</button>
+      <div class="muted" style="margin-top:10px;">비밀번호를 한 번 입력한 기기는 계속 기억되어 다시 묻지 않습니다.</div>
+      <button class="btn ghost wide" style="margin-top:8px;" onclick="lockAdmin()">🔒 이 기기 관리자 기억 끄기 (다시 잠금)</button>
     </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">💾 데이터 백업 / 복원</h3>
@@ -281,7 +283,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 <!-- 출퇴근 모달 -->
 <div class="modal-bg" id="mdPunch"><div class="modal">
   <button class="modal-back" onclick="closeM('mdPunch')">‹</button>
-  <h3 id="punchName" style="margin-left:48px;">-</h3>
+  <h3 id="punchName">-</h3>
   <div class="muted" id="punchInfo"></div>
   <div class="bigtime" id="punchClock">--:--</div>
   <div id="punchState" style="text-align:center;margin-bottom:16px;"></div>
@@ -295,7 +297,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 <!-- PIN 모달 -->
 <div class="modal-bg" id="mdPin"><div class="modal">
   <button class="modal-back" onclick="closeM('mdPin')">‹</button>
-  <h3 style="margin-left:48px;">관리자 확인</h3>
+  <h3>관리자 확인</h3>
   <div class="muted">관리자 비밀번호를 입력하세요.</div>
   <input type="password" class="pin-in" id="pinInput" maxlength="4" inputmode="numeric" style="margin:18px 0;" placeholder="••••">
   <button class="btn p wide" onclick="checkPin()">확인</button>
@@ -305,7 +307,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 <!-- 직원 등록/수정 모달 -->
 <div class="modal-bg" id="mdEmp"><div class="modal">
   <button class="modal-back" onclick="closeM('mdEmp')">‹</button>
-  <h3 id="empFormTitle" style="margin-left:48px;">직원 추가</h3>
+  <h3 id="empFormTitle">직원 추가</h3>
   <label class="f">이름 *</label><input id="fName" placeholder="홍길동">
   <label class="f">고용형태 *</label>
   <select id="fType" onchange="empTypeUI()">
@@ -347,7 +349,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 <!-- 기록 수정 모달 (관리자) -->
 <div class="modal-bg" id="mdRec"><div class="modal">
   <button class="modal-back" onclick="closeM('mdRec')">‹</button>
-  <h3 id="recTitle" style="margin-left:48px;">근태 기록 수정</h3>
+  <h3 id="recTitle">근태 기록 수정</h3>
   <div class="muted" id="recSub"></div>
   <div class="row" style="margin-top:14px;">
     <div style="flex:1;"><label class="f" style="margin-top:0;">출근</label><input type="time" id="recIn"></div>
@@ -418,7 +420,7 @@ function go(p,needAdmin){
   window.scrollTo(0,0);
 }
 function checkPin(){
-  if(document.getElementById('pinInput').value===DB.settings.pin){ adminOK=true; closeM('mdPin'); go(pendingPage||'emp',false); }
+  if(document.getElementById('pinInput').value===DB.settings.pin){ adminOK=true; DB.settings.adminOK=true; save(); closeM('mdPin'); go(pendingPage||'emp',false); toast('이 기기를 관리자 기기로 기억합니다'); }
   else toast('비밀번호가 올바르지 않습니다');
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&document.getElementById('mdPin').classList.contains('on'))checkPin(); });
@@ -960,6 +962,11 @@ function exportExcel(){
 }
 
 /* ================== 설정 ================== */
+function lockAdmin(){
+  DB.settings.adminOK=false; save(); adminOK=false;
+  toast('잠금이 다시 켜졌습니다. 관리자 메뉴 진입 시 비밀번호를 묻습니다');
+  go('kiosk');
+}
 function changePin(){
   const v=document.getElementById('setPin').value;
   if(!/^\d{4}$/.test(v)){toast('4자리 숫자로 입력해 주세요');return;}
@@ -1325,7 +1332,9 @@ function renderBackupStatus(){
 }
 
 /* ================== init ================== */
-load(); moveFromHash(); adminFromHash(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
+load(); moveFromHash(); adminFromHash(); joinFromHash();
+adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
+tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
 renderCloudStatus(); renderNotifyCard(); cloudSync();
 setTimeout(autoPunchTick,3000);
