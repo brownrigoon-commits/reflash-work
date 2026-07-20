@@ -1086,7 +1086,7 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch,phone:e.phone||''}; }
 async function cloudPushRoster(){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
   const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
@@ -1119,7 +1119,11 @@ async function cloudSync(){
     if(room.recs)DB.records=room.recs;
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
-      DB.employees=Object.entries(room.emps).map(([id,e])=>({id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...(local[id]||{}),...e}));
+      DB.employees=Object.entries(room.emps).map(([id,e])=>{
+        const l=local[id]||{};
+        return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
+          phone:(e.phone||l.phone||'')}; // 전화번호는 비어있지 않은 값 우선 (지워짐 방지)
+      });
     }
     notifyCache=room.notify||null;
     // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
