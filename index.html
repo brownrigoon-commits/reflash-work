@@ -362,7 +362,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div style="flex:1;"><label class="f" style="margin-top:0;">퇴근</label><input type="time" id="recOut"></div>
   </div>
   <button class="btn y wide" style="margin-top:10px;" onclick="fillSched()">⏰ 정시로 채우기 (근무시간표 대로)</button>
-  <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. 비워서 저장하면 기록이 삭제되며(자동 출퇴근 직원은 그날 자동입력이 꺼져 결근 처리), 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
+  <button class="btn red wide" style="margin-top:8px;" onclick="recAbsent()">🚫 결근 처리</button>
+  <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. [결근 처리]를 누르면 그날은 결근으로 기록됩니다(자동 출퇴근 직원도 그날 자동입력이 꺼짐). 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
   <div class="row" style="margin-top:16px;">
     <button class="btn p" style="flex:1;" onclick="saveRec()">저장</button>
     <button class="btn ghost" style="flex:1;" onclick="closeM('mdRec')">취소</button>
@@ -375,7 +376,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260720_215355'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260720_221051'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -677,6 +678,13 @@ function fillSched(){
   const e=emp(recEmpId);
   document.getElementById('recIn').value=e.schedule.start;
   document.getElementById('recOut').value=e.schedule.end;
+}
+function recAbsent(){
+  const e=emp(recEmpId);
+  if(!confirm(`${e.name}님을 ${recDate} 결근으로 처리할까요?`))return;
+  DB.records[recDate]=DB.records[recDate]||{};
+  DB.records[recDate][recEmpId]={off:true,manual:true};
+  save(); queueRec(recDate,recEmpId); closeM('mdRec'); renderStatus(); toast('결근 처리되었습니다');
 }
 function saveRec(){
   const i=document.getElementById('recIn').value,o=document.getElementById('recOut').value;
