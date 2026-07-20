@@ -216,6 +216,21 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
       <button id="cloudOff" class="btn red wide" style="display:none;margin-top:6px;" onclick="cloudDisable()">연동 해제</button>
     </div>
     <div class="card">
+      <h3 style="font-size:15px;margin-bottom:10px;">🔔 출퇴근 알림</h3>
+      <div class="muted" style="margin-bottom:10px;">직원이 출근/퇴근을 누르면 선택된 수신자의 기기로 알림이 갑니다. (클라우드 연동 필요)</div>
+      <button class="btn ghost wide" id="btnNotifPerm" onclick="enableBrowserNotif()">🔔 이 기기 브라우저 알림 켜기</button>
+      <div id="notifyAdminArea" style="display:none;">
+        <div style="border-top:1px solid var(--line);margin:14px 0;"></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px;">알림 받을 사람 선택 <span class="muted" style="font-weight:400;">(체크한 사람의 기기로 알림)</span></div>
+        <div id="notifyList"></div>
+        <button class="btn p wide" style="margin-top:10px;" onclick="saveNotify()">수신자 저장</button>
+        <div style="border-top:1px solid var(--line);margin:14px 0;"></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px;">📲 폰 푸시 알림 — 앱이 꺼져 있어도 수신</div>
+        <div class="muted" id="ntfyInfo">무료 앱 "ntfy"를 설치하고 우리 회사 채널을 구독하면, 잠금화면 푸시로 받을 수 있습니다.</div>
+        <button class="btn y wide" style="margin-top:8px;" onclick="copyNtfyGuide()">푸시알림 설치 안내문 복사 (카톡 전송용)</button>
+      </div>
+    </div>
+    <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">📧 월말 급여대장 자동 수신 (검토용)</h3>
       <label class="f" style="margin-top:0;">받아볼 이메일 (대표님 메일)</label>
       <input id="setTaxMail" placeholder="예: brown.rigoon@gmail.com">
@@ -372,6 +387,7 @@ function go(p,needAdmin){
   if(p==='status')renderStatus();
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
+  if(p==='set')renderNotifyCard();
   window.scrollTo(0,0);
 }
 function checkPin(){
@@ -421,7 +437,7 @@ function doPunch(kind){
   const r=DB.records[ds][punchEmpId]||{};
   if(kind==='in'){ if(r.in){toast('이미 출근 처리되었습니다');return;} r.in=hm; toast(`${emp(punchEmpId).name}님 출근 완료! (${hm})`);}
   else{ if(!r.in){toast('출근 기록이 없습니다');return;} if(r.out){toast('이미 퇴근 처리되었습니다');return;} r.out=hm; toast(`${emp(punchEmpId).name}님 퇴근 완료! 수고하셨습니다 (${hm})`);}
-  DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); closeM('mdPunch'); renderKiosk();
+  DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
 }
 
 /* ================== 근태 판정 ================== */
@@ -923,24 +939,125 @@ async function flushPending(){
   }
   localStorage.setItem(LS,JSON.stringify(DB));
 }
-let syncBusy=false;
+let syncBusy=false, notifyCache=null;
 async function cloudSync(){
   if(!cloudOn()||syncBusy)return; syncBusy=true;
   try{
     await flushPending();
-    const recs=await cfetch('/recs');
-    if(recs)DB.records=recs;
-    if(cloudCfg().role==='staff'){
-      const emps=await cfetch('/emps');
-      if(emps)DB.employees=Object.entries(emps).map(([id,e])=>({id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...e}));
+    const room=await cfetch('')||{};
+    if(room.recs)DB.records=room.recs;
+    if(cloudCfg().role==='staff'&&room.emps){
+      DB.employees=Object.entries(room.emps).map(([id,e])=>({id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...e}));
     }
+    notifyCache=room.notify||null;
+    // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
+    if(cloudCfg().role==='admin'&&!notifyCache){
+      const recips={_admin:true};
+      DB.employees.filter(e=>!e.leaveDate).forEach(e=>recips[e.id]=true);
+      notifyCache={recips,ntfy:'rf-'+Math.random().toString(36).slice(2,12)};
+      cfetch('/notify',{method:'PUT',body:JSON.stringify(notifyCache)}).catch(()=>{});
+    }
+    handleEvents(room.events||null);
     DB.settings.lastSync=new Date().toLocaleTimeString('ko-KR');
     localStorage.setItem(LS,JSON.stringify(DB));
     renderCloudStatus();
     if(document.getElementById('pg-kiosk').classList.contains('on'))renderKiosk();
     if(document.getElementById('pg-status').classList.contains('on'))renderStatus();
+    if(document.getElementById('pg-set').classList.contains('on'))renderNotifyCard();
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
   syncBusy=false;
+}
+/* ── 출퇴근 알림 ── */
+function pushEvent(kind,empId,hm){
+  if(!cloudOn())return;
+  const e=emp(empId); if(!e)return;
+  const ts=Date.now();
+  const ev={k:kind,i:empId,n:e.name,t:hm,d:todayStr(),ts};
+  cfetch('/events/e'+ts+Math.random().toString(36).slice(2,5),{method:'PUT',body:JSON.stringify(ev)}).catch(()=>{});
+  if(notifyCache&&notifyCache.ntfy){
+    const msg=`${e.name}님이 ${kind==='in'?'출근':'퇴근'}했습니다 (${hm})`;
+    fetch('https://ntfy.sh',{method:'POST',body:JSON.stringify({topic:notifyCache.ntfy,title:'리플래시 work',message:msg})}).catch(()=>{});
+  }
+}
+function shouldNotify(ev){
+  const c=cloudCfg(); if(!c)return false;
+  const me=c.role==='staff'?c.myEmpId:'_admin';
+  if(c.role==='staff'&&ev.i===c.myEmpId)return false; // 본인 기록은 알림 제외
+  const rec=notifyCache&&notifyCache.recips;
+  if(!rec)return c.role==='admin';
+  return !!rec[me];
+}
+function showNotif(ev){
+  const msg=`${ev.n}님이 ${ev.k==='in'?'출근':'퇴근'}했습니다 (${ev.t})`;
+  toast('🔔 '+msg);
+  try{
+    if(window.Notification&&Notification.permission==='granted')
+      new Notification('리플래시 work',{body:msg,icon:'logo_round.png',tag:'punch'+ev.ts});
+  }catch(e){}
+}
+function handleEvents(events){
+  const first=!DB.settings.lastEvt;
+  if(!events){ if(first)DB.settings.lastEvt='0'; return; }
+  const keys=Object.keys(events).sort();
+  if(first){ DB.settings.lastEvt=keys.length?keys[keys.length-1]:'0'; return; } // 최초 접속: 과거 알림 생략
+  const news=keys.filter(k=>k>DB.settings.lastEvt);
+  news.forEach(k=>{ if(shouldNotify(events[k]))showNotif(events[k]); });
+  if(news.length)DB.settings.lastEvt=keys[keys.length-1];
+  // 이벤트 300개 초과 시 오래된 것 정리 (관리자 기기)
+  if(cloudCfg().role==='admin'&&keys.length>300){
+    const keep={}; keys.slice(-150).forEach(k=>keep[k]=events[k]);
+    cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
+  }
+}
+function enableBrowserNotif(){
+  if(!window.Notification){toast('이 브라우저는 알림을 지원하지 않습니다');return;}
+  Notification.requestPermission().then(p=>{
+    renderNotifyCard();
+    toast(p==='granted'?'브라우저 알림이 켜졌습니다!':'알림 권한이 거부되었습니다. 브라우저 설정에서 허용해 주세요');
+  });
+}
+function renderNotifyCard(){
+  const btn=document.getElementById('btnNotifPerm'); if(!btn)return;
+  if(window.Notification&&Notification.permission==='granted'){btn.textContent='🔔 브라우저 알림 켜짐 ✓';btn.disabled=true;}
+  else{btn.textContent='🔔 이 기기 브라우저 알림 켜기';btn.disabled=false;}
+  const area=document.getElementById('notifyAdminArea');
+  const c=cloudCfg();
+  const isAdmin=c&&c.role==='admin';
+  area.style.display=isAdmin?'block':'none';
+  if(!isAdmin)return;
+  const rec=(notifyCache&&notifyCache.recips)||{_admin:true};
+  const list=document.getElementById('notifyList');
+  let h=`<label style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px;">
+    <input type="checkbox" data-nid="_admin" ${rec._admin!==false?'checked':''} style="width:18px;height:18px;"> 대표님 (이 관리자 기기)</label>`;
+  DB.employees.filter(e=>!e.leaveDate).forEach(e=>{
+    h+=`<label style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px;">
+      <input type="checkbox" data-nid="${e.id}" ${rec[e.id]?'checked':''} style="width:18px;height:18px;"> ${e.name}</label>`;
+  });
+  list.innerHTML=h;
+  const info=document.getElementById('ntfyInfo');
+  if(notifyCache&&notifyCache.ntfy)
+    info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${notifyCache.ntfy}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
+}
+async function saveNotify(){
+  if(!cloudOn()){toast('먼저 클라우드 연동을 켜 주세요');return;}
+  const recips={};
+  document.querySelectorAll('#notifyList input[type=checkbox]').forEach(cb=>{recips[cb.dataset.nid]=cb.checked;});
+  notifyCache={recips,ntfy:(notifyCache&&notifyCache.ntfy)||'rf-'+Math.random().toString(36).slice(2,12)};
+  try{ await cfetch('/notify',{method:'PUT',body:JSON.stringify(notifyCache)}); toast('알림 수신자가 저장되었습니다'); }
+  catch(e){ toast('저장 실패 — 인터넷 연결을 확인해 주세요'); }
+}
+function copyNtfyGuide(){
+  if(!(notifyCache&&notifyCache.ntfy)){toast('클라우드 연동 후 사용할 수 있습니다');return;}
+  const msg=`[리플래시 work] 출퇴근 푸시알림 받는 방법 (1분)
+1. 앱스토어/플레이스토어에서 "ntfy" 검색 → 설치 (무료)
+2. 앱 열고 + (구독하기) 누르기
+3. 채널 이름 입력: ${notifyCache.ntfy}
+4. 끝! 이제 직원 출퇴근 시 폰으로 알림이 옵니다.
+※ 알림을 그만 받으려면 ntfy 앱에서 채널을 삭제하면 됩니다.`;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(msg).then(()=>toast('안내문이 복사되었습니다. 카톡에 붙여넣기 하세요!'))
+      .catch(()=>prompt('아래 내용을 복사하세요', msg));
+  } else prompt('아래 내용을 복사하세요', msg);
 }
 async function cloudEnable(){
   const url=document.getElementById('cloudUrl').value.trim().replace(/\/+$/,'');
@@ -1057,8 +1174,8 @@ function renderBackupStatus(){
 /* ================== init ================== */
 load(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
-renderCloudStatus(); cloudSync();
-setInterval(cloudSync,45000);
+renderCloudStatus(); renderNotifyCard(); cloudSync();
+setInterval(cloudSync,25000);
 window.addEventListener('focus',cloudSync);
 </script>
 <script id="logoData">
