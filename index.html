@@ -217,6 +217,7 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
         직원들이 각자 폰에서 출퇴근을 누르면 이 기기로 모두 모입니다.<br>
         ※ 클라우드에는 이름·출퇴근 시각만 저장됩니다 (주민번호·급여·계좌 제외)</div>
       </div>
+      <button class="btn y wide" style="margin-top:6px;" onclick="adminDeviceLink()">🖥️ 내 컴퓨터에서도 관리자로 쓰기 (링크 복사)</button>
       <button id="cloudOff" class="btn red wide" style="display:none;margin-top:6px;" onclick="cloudDisable()">연동 해제</button>
     </div>
     <div class="card">
@@ -903,6 +904,39 @@ function makeMoveLink(){
     } else prompt('아래 내용을 복사하세요', msg);
   }catch(e){toast('링크 생성 실패');}
 }
+function pinHash(s){let h=5381;for(const c of String(s))h=((h<<5)+h+c.charCodeAt(0))>>>0;return h.toString(36);}
+function adminDeviceLink(){
+  try{
+    const c=cloudCfg();
+    const payload={db:DB,ph:pinHash(DB.settings.pin)};
+    if(c&&c.role==='admin')payload.cloud={url:c.url,roomId:c.roomId};
+    const b=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    if(b.length>60000){toast('데이터가 커서 링크로는 어렵습니다. [백업 다운로드]를 이용해 주세요');return;}
+    const link=location.origin+location.pathname+'#admin='+b;
+    const note=(c&&c.role==='admin')?'실시간 동기화 포함':'클라우드 연동 전이라 현재 시점 복사본입니다';
+    const msg=`[리플래시 work] 관리자 기기 추가 (${note})\n컴퓨터(또는 다른 기기) 브라우저에서 아래 링크를 열고 관리자 비밀번호를 입력하세요.\n${link}`;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(msg).then(()=>toast('관리자 링크 복사 완료! 컴퓨터로 보내서 여세요'))
+        .catch(()=>prompt('아래 내용을 복사하세요', msg));
+    } else prompt('아래 내용을 복사하세요', msg);
+  }catch(e){toast('링크 생성 실패');}
+}
+function adminFromHash(){
+  const m=location.hash.match(/#admin=(.+)/);
+  if(!m)return;
+  try{
+    const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    history.replaceState(null,'',location.pathname);
+    if(!(p.db&&p.ph))return;
+    const pin=prompt('관리자 기기 등록 — 관리자 비밀번호(4자리)를 입력하세요');
+    if(pin===null)return;
+    if(pinHash(pin)!==p.ph){alert('비밀번호가 올바르지 않습니다.');return;}
+    DB=p.db;
+    if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin'};
+    save();
+    setTimeout(()=>toast('관리자 기기로 등록되었습니다! 폰과 같은 화면입니다'),400);
+  }catch(e){ history.replaceState(null,'',location.pathname); toast('관리자 링크를 읽지 못했습니다'); }
+}
 function moveFromHash(){
   const m=location.hash.match(/#move=(.+)/);
   if(!m)return;
@@ -976,8 +1010,9 @@ async function cloudSync(){
     await flushPending();
     const room=await cfetch('')||{};
     if(room.recs)DB.records=room.recs;
-    if(cloudCfg().role==='staff'&&room.emps){
-      DB.employees=Object.entries(room.emps).map(([id,e])=>({id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...e}));
+    if(room.emps&&Object.keys(room.emps).length){
+      const local={}; DB.employees.forEach(e=>local[e.id]=e);
+      DB.employees=Object.entries(room.emps).map(([id,e])=>({id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...(local[id]||{}),...e}));
     }
     notifyCache=room.notify||null;
     // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
@@ -1202,7 +1237,7 @@ function renderBackupStatus(){
 }
 
 /* ================== init ================== */
-load(); moveFromHash(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
+load(); moveFromHash(); adminFromHash(); joinFromHash(); tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
 renderCloudStatus(); renderNotifyCard(); cloudSync();
 setInterval(cloudSync,25000);
