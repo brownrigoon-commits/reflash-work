@@ -131,7 +131,7 @@ html,body{overflow-x:hidden;}
 body.no-scroll{overflow:hidden;touch-action:none;}
 .modal{position:relative;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;}
 .row input,.row>div{min-width:0;}
-.modal-back{position:absolute;left:14px;top:20px;width:38px;height:38px;border:none;border-radius:50%;background:var(--purple-light);color:var(--purple);font-size:22px;font-weight:800;cursor:pointer;line-height:1;z-index:5;}
+.modal-back{position:sticky;top:6px;margin:-4px 0 -38px -2px;display:block;width:38px;height:38px;border:none;border-radius:50%;background:var(--purple-light);color:var(--purple);font-size:22px;font-weight:800;cursor:pointer;line-height:1;z-index:5;box-shadow:0 2px 8px rgba(55,36,112,.25);}
 </style>
 </head>
 <body>
@@ -280,7 +280,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 
 <!-- 출퇴근 모달 -->
 <div class="modal-bg" id="mdPunch"><div class="modal">
-  <h3 id="punchName">-</h3>
+  <button class="modal-back" onclick="closeM('mdPunch')">‹</button>
+  <h3 id="punchName" style="margin-left:48px;">-</h3>
   <div class="muted" id="punchInfo"></div>
   <div class="bigtime" id="punchClock">--:--</div>
   <div id="punchState" style="text-align:center;margin-bottom:16px;"></div>
@@ -293,7 +294,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 
 <!-- PIN 모달 -->
 <div class="modal-bg" id="mdPin"><div class="modal">
-  <h3>관리자 확인</h3>
+  <button class="modal-back" onclick="closeM('mdPin')">‹</button>
+  <h3 style="margin-left:48px;">관리자 확인</h3>
   <div class="muted">관리자 비밀번호를 입력하세요.</div>
   <input type="password" class="pin-in" id="pinInput" maxlength="4" inputmode="numeric" style="margin:18px 0;" placeholder="••••">
   <button class="btn p wide" onclick="checkPin()">확인</button>
@@ -344,7 +346,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 
 <!-- 기록 수정 모달 (관리자) -->
 <div class="modal-bg" id="mdRec"><div class="modal">
-  <h3 id="recTitle">근태 기록 수정</h3>
+  <button class="modal-back" onclick="closeM('mdRec')">‹</button>
+  <h3 id="recTitle" style="margin-left:48px;">근태 기록 수정</h3>
   <div class="muted" id="recSub"></div>
   <div class="row" style="margin-top:14px;">
     <div style="flex:1;"><label class="f" style="margin-top:0;">출근</label><input type="time" id="recIn"></div>
