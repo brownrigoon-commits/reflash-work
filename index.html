@@ -943,15 +943,17 @@ function adminFromHash(){
   if(!m)return;
   try{
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    history.replaceState(null,'',location.pathname);
     if(!(p.db&&p.ph))return;
+    const c0=cloudCfg();
+    // 이미 등록된 기기(홈 화면 앱 재실행 등)는 비밀번호 없이 그대로 통과
+    if(p.cloud&&c0&&c0.role==='admin'&&c0.roomId===p.cloud.roomId)return;
     const pin=prompt('관리자 기기 등록 — 관리자 비밀번호(4자리)를 입력하세요');
     if(pin===null)return;
     if(pinHash(pin)!==p.ph){alert('비밀번호가 올바르지 않습니다.');return;}
     DB=p.db;
     if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin'};
     save();
-    setTimeout(()=>toast('관리자 기기로 등록되었습니다! 폰과 같은 화면입니다'),400);
+    setTimeout(()=>toast('관리자 기기 등록 완료! 이 화면 그대로 [홈 화면에 추가] 하세요'),400);
   }catch(e){ history.replaceState(null,'',location.pathname); toast('관리자 링크를 읽지 못했습니다'); }
 }
 function moveFromHash(){
@@ -1196,6 +1198,7 @@ function joinFromHash(){
     if(!(p.u&&p.r&&p.i))return;
     const c=cloudCfg();
     if(c&&c.role==='admin'){ history.replaceState(null,'',location.pathname); toast('관리자 기기에서는 초대 링크가 적용되지 않습니다'); return; }
+    if(c&&c.role==='staff'&&c.roomId===p.r&&c.myEmpId===p.i)return; // 이미 입장한 기기(홈 화면 앱)
     if(p.v){
       let ok=false;
       for(let t=0;t<3;t++){
@@ -1208,8 +1211,7 @@ function joinFromHash(){
     }
     DB.settings.cloud={url:p.u,roomId:p.r,role:'staff',myEmpId:p.i};
     save();
-    history.replaceState(null,'',location.pathname);
-    setTimeout(()=>toast((p.n||'직원')+'님, 환영합니다! 출근/퇴근 버튼을 눌러 기록하세요'),400);
+    setTimeout(()=>toast((p.n||'직원')+'님, 환영합니다! 이 화면 그대로 [홈 화면에 추가] 해두세요'),400);
   }catch(e){}
 }
 
