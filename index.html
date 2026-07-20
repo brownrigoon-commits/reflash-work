@@ -382,7 +382,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_002437'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_003938'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -711,7 +711,7 @@ function renderEmpList(){
   const mk=(e)=>{
     const months=Math.max(0,Math.floor((new Date(e.leaveDate||todayStr())-new Date(e.joinDate))/(30.44*864e5)));
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
-    const admin=e.role==='admin'?' <span class="badge b-admin">관리자</span>':'';
+    const admin=e.main?' <span class="badge b-admin">메인관리자</span>':e.role==='admin'?' <span class="badge b-admin">부관리자</span>':'';
     const duty=e.duty?` <span class="badge b-duty">${e.duty}</span>`:'';
     const off=e.leaveDate?' <span class="badge b-off">퇴사</span>':'';
     const payS=e.type==='daily'?`시급 ${comma(e.hourly)}원`:`월 ${comma(e.salary)}원`;
@@ -739,7 +739,7 @@ function openEmpForm(id){
   document.getElementById('fEnd').value=e?e.schedule.end:'18:00';
   document.getElementById('fAuto').checked=e?!!e.autoPunch:false;
   document.getElementById('fAdmin').checked=e?(e.role||'staff')==='admin':false;
-  document.getElementById('fAdmin').disabled=!isOwnerDev(); // 부관리자 권한은 메인 관리자만 부여
+  document.getElementById('fAdmin').disabled=!isOwnerDev()||!!(e&&e.main); // 부관리자 권한은 메인 관리자만 부여, 메인관리자 본인은 변경 불가
   document.getElementById('fPhone').value=e?(e.phone||''):'';
   document.getElementById('fRrn').value=e?(e.rrn||''):'';
   document.getElementById('fBank').value=e?(e.bank||''):'';
@@ -782,6 +782,7 @@ function saveEmp(){
     schedule:{days:days.length?days:[1,2,3,4,5],start:document.getElementById('fStart').value||'09:00',end:document.getElementById('fEnd').value||'18:00'}
   };
   if(isOwnerDev())o.role=document.getElementById('fAdmin').checked?'admin':'staff'; // 부관리자 권한은 메인 관리자만 변경
+  if(editEmpId&&emp(editEmpId).main)o.role='admin'; // 메인관리자는 권한 강등 불가 (영구)
   if(t!=='daily'&&!o.salary){toast('급여를 입력해 주세요');return;}
   if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
   let savedId=editEmpId;
@@ -1151,7 +1152,14 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch,phone:e.phone||'',duty:e.duty||''}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',main:!!e.main,autoPunch:!!e.autoPunch,phone:e.phone||'',duty:e.duty||''}; }
+// 메인관리자 고정: 데이터에 메인관리자가 없으면 seed의 메인관리자 id(e2)를 지정하고, 항상 관리자 권한 유지
+function ensureMain(){
+  if(!DB||!DB.employees)return;
+  let m=DB.employees.find(e=>e.main);
+  if(!m){ m=DB.employees.find(e=>e.id==='e2'); if(m)m.main=true; }
+  if(m)m.role='admin';
+}
 /* ── 관리자 기기 구분: 소유자(제작자·연동을 켠 기기) vs 링크로 추가된 공동 관리자 ── */
 function isOwnerDev(){ const c=cloudCfg(); if(!c)return true; if(c.role==='staff')return false; return c.owner!==false; }
 function setLocked(){ return !isOwnerDev(); }
@@ -1281,6 +1289,7 @@ async function cloudSync(){
       const cloudIds=new Set(Object.keys(room.emps));
       const extras=Object.values(local).filter(e=>!cloudIds.has(e.id));
       if(extras.length){ DB.employees.push(...extras); cloudPushRoster(); }
+      ensureMain();
     }
     // 관리자 전용 데이터 수신 (급여·주민번호·계좌·급여탭 수정값)
     if(cloudCfg().role==='admin'){
@@ -1563,6 +1572,7 @@ function renderBackupStatus(){
 /* ================== init ================== */
 load();
 { const _c=cloudCfg(); if(_c&&_c.role==='admin'&&_c.owner===undefined)_c.owner=true; } // 기존 관리자 기기는 소유자로 승격
+ensureMain(); // 메인관리자 영구 지정
 moveFromHash(); adminFromHash(); joinFromHash();
 adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
 applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
