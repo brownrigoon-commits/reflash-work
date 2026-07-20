@@ -382,7 +382,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_001200'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_002437'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -461,8 +461,7 @@ function renderKiosk(){
   const ds=todayStr(); let list=activeEmps();
   const cc=cloudCfg(); const staffMode=!!(cc&&cc.role==='staff'&&cc.myEmpId);
   if(staffMode){
-    list=list.filter(e=>(e.role||'staff')!=='admin');           // 임원 숨김
-    list.sort((a,b)=>(a.id===cc.myEmpId?-1:0)-(b.id===cc.myEmpId?-1:0)); // 내 카드 맨 앞
+    list.sort((a,b)=>(a.id===cc.myEmpId?-1:0)-(b.id===cc.myEmpId?-1:0)); // 내 카드 맨 앞 (관리자 포함 전원 표시)
   }
   const workers=list.filter(e=>{const r=recOf(ds,e.id);return r&&r.in&&!r.out;}).length;
   const came=list.filter(e=>{const r=recOf(ds,e.id);return r&&r.in;}).length;
@@ -574,8 +573,7 @@ function monthAgg(e,y,m){
 }
 
 function visEmps(d){
-  const l=activeEmps(d), c=cloudCfg();
-  return (c&&c.role==='staff')?l.filter(e=>(e.role||'staff')!=='admin'):l;
+  return activeEmps(d); // 관리자 포함 전 직원 표시 (모든 기기 공통)
 }
 /* ================== 자동 출퇴근 ================== */
 function autoPunchTick(){
