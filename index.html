@@ -61,6 +61,7 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 .b-reg{background:var(--purple-light);color:var(--purple);}
 .b-free{background:var(--yellow-soft);color:#A07800;}
 .b-daily{background:#FFEDE5;color:#D95B23;}
+.b-duty{background:#E7F5F1;color:#0E8A6D;}
 .b-admin{background:var(--purple);color:#fff;}
 .b-off{background:#EEE;color:#999;}
 .muted{color:var(--txt-sub);font-size:12.5px;}
@@ -315,6 +316,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <button class="modal-back" onclick="closeM('mdEmp')">‹</button>
   <h3 id="empFormTitle">직원 추가</h3>
   <label class="f">이름 *</label><input id="fName" placeholder="홍길동">
+  <label class="f">담당 업무 <span style="font-weight:400;">(직원 목록 이름 옆에 표시 · 선택)</span></label><input id="fDuty" placeholder="예: B창고_관리 / 양품화_관리" maxlength="30">
   <label class="f">고용형태 *</label>
   <select id="fType" onchange="empTypeUI()">
     <option value="regular">정직원 (월급제 · 4대보험)</option>
@@ -380,7 +382,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260720_235050'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260720_235525'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -711,10 +713,11 @@ function renderEmpList(){
     const months=Math.max(0,Math.floor((new Date(e.leaveDate||todayStr())-new Date(e.joinDate))/(30.44*864e5)));
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
     const admin=e.role==='admin'?' <span class="badge b-admin">관리자</span>':'';
+    const duty=e.duty?` <span class="badge b-duty">${e.duty}</span>`:'';
     const off=e.leaveDate?' <span class="badge b-off">퇴사</span>':'';
     const payS=e.type==='daily'?`시급 ${comma(e.hourly)}원`:`월 ${comma(e.salary)}원`;
     return `<div class="emp-row" onclick="openEmpForm('${e.id}')"><div>
-      <div class="nm">${e.name} ${badge}${admin}${off}</div>
+      <div class="nm">${e.name} ${badge}${admin}${duty}${off}</div>
       <div class="info">근무기간 : ${e.joinDate} ~ ${e.leaveDate||'계속'} (${months}개월) · ${payS}</div>
     </div><div class="arrow">›</div></div>`;
   };
@@ -727,6 +730,7 @@ function openEmpForm(id){
   const e=id?emp(id):null;
   document.getElementById('empFormTitle').textContent=e?`${e.name} 정보 수정`:'직원 추가';
   document.getElementById('fName').value=e?e.name:'';
+  document.getElementById('fDuty').value=e?(e.duty||''):'';
   document.getElementById('fType').value=e?e.type:'regular';
   document.getElementById('fSalary').value=e?comma(e.salary):'';
   document.getElementById('fHourly').value=e?comma(e.hourly):'';
@@ -766,6 +770,7 @@ function saveEmp(){
   const days=[...document.querySelectorAll('#fDays span.on')].map(s=>+s.dataset.d);
   const o={
     name, type:t,
+    duty:document.getElementById('fDuty').value.trim(),
     salary:unc(document.getElementById('fSalary').value),
     hourly:unc(document.getElementById('fHourly').value),
     dailyH:+document.getElementById('fDailyH').value||8,
@@ -1147,7 +1152,7 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch,phone:e.phone||''}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',autoPunch:!!e.autoPunch,phone:e.phone||'',duty:e.duty||''}; }
 /* ── 관리자 기기 구분: 소유자(제작자·연동을 켠 기기) vs 링크로 추가된 공동 관리자 ── */
 function isOwnerDev(){ const c=cloudCfg(); if(!c)return true; if(c.role==='staff')return false; return c.owner!==false; }
 function setLocked(){ return !isOwnerDev(); }
@@ -1227,8 +1232,9 @@ async function cloudPushRoster(editedId){
     else if(!l)base=c;                  // 클라우드에만 있는 직원 → 보존 (절대 삭제 안 함)
     else if(id===editedId)base={...c,...l}; // 방금 수정한 직원: 이 기기 값 우선
     else base={...l,...c};              // 그 외: 클라우드(최신) 우선
-    // 전화번호는 어느 쪽이든 비어있지 않은 값이 항상 이김
+    // 전화번호·담당업무는 어느 쪽이든 비어있지 않은 값이 항상 이김
     base.phone=(id===editedId?((l&&l.phone)||(c&&c.phone)):((c&&c.phone)||(l&&l.phone)))||'';
+    base.duty=(id===editedId?((l&&l.duty)||''):((c&&c.duty)||(l&&l.duty)||''));
     obj[id]=base;
   });
   try{ await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)}); }catch(e){console.warn('roster push 실패',e);}
@@ -1270,7 +1276,7 @@ async function cloudSync(){
       DB.employees=Object.entries(room.emps).map(([id,e])=>{
         const l=local[id]||{};
         return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
-          phone:(e.phone||l.phone||'')}; // 전화번호는 비어있지 않은 값 우선 (지워짐 방지)
+          phone:(e.phone||l.phone||''),duty:(e.duty||l.duty||'')}; // 전화번호·담당업무는 비어있지 않은 값 우선 (지워짐 방지)
       });
       // 이 기기에만 있는 직원은 버리지 않고 유지 + 클라우드에 올림
       const cloudIds=new Set(Object.keys(room.emps));
