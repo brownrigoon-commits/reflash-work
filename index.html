@@ -10,7 +10,10 @@
 <meta property="og:url" content="https://brownrigoon-commits.github.io/reflash-work/">
 <meta property="og:type" content="website">
 <link rel="icon" type="image/png" href="logo_round.png">
-<link rel="apple-touch-icon" href="icon_riwork3.png">
+<link rel="apple-touch-icon" href="icon_riwork4.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon_riwork4.png">
+<link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="Ri-work">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -393,7 +396,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_124526'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_130054'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;

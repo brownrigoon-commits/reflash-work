@@ -1,0 +1,19 @@
+{
+  "name": "Ri-work",
+  "short_name": "Ri-work",
+  "display": "standalone",
+  "theme_color": "#472F92",
+  "background_color": "#472F92",
+  "icons": [
+    {
+      "src": "icon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon_riwork4.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
