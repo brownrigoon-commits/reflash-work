@@ -399,7 +399,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_170523'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_171148'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -709,16 +709,16 @@ function renderLunchBar(){
   let head;
   if(ov&&ov.hold){
     head=(ov.n||0)===0
-      ?`✋ <b style="color:#D95B23;">주문 안 함</b> <span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} (직접 주문 예약)</span>`
-      :`✋ <b style="color:#D95B23;">직접 주문 ${ov.n}개</b> <span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 발송예정</span>`;
+      ?`✋ <b style="color:#D95B23;">주문 안 함</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} (직접 주문 예약)</span>`
+      :`✋ <b style="color:#D95B23;">직접 주문 ${ov.n}개</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 발송예정</span>`;
   }else{
     const n=(tds===todayStr())?lunchCount():0;
-    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${n}개</span> <span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 자동주문예정</span>`;
+    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${n}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 자동주문예정</span>`;
   }
   if(!window._lunchPanel){
-    el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:13px 14px;flex-wrap:wrap;">
-      <div style="font-weight:800;">${head}</div>
-      <button class="btn ghost" style="padding:8px 12px;font-size:13px;white-space:nowrap;" onclick="lunchOpenPanel()">✋ 직접 주문</button></div>`;
+    el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:13px 14px;">
+      <div style="font-weight:800;min-width:0;line-height:1.5;">${head}</div>
+      <button class="btn ghost" style="padding:9px 13px;font-size:13px;white-space:nowrap;flex-shrink:0;" onclick="lunchOpenPanel()">✋ 직접 주문</button></div>`;
     return;
   }
   const sel=window._lunchSel||tds, n=window._lunchN||0;
