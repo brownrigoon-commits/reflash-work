@@ -399,7 +399,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_151824'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_161603'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -637,14 +637,18 @@ function lunchNowMin(){ const n=new Date(); return (window._testHM!=null)?window
 function lunchPublish(room){ // cloudSync에서 호출
   try{
     window._roomLunchCfg=(room&&room.lunch&&room.lunch.cfg)||window._roomLunchCfg||null;
+    const ds=todayStr();
+    const tdy=room&&room.lunch&&room.lunch.today;
+    if(tdy&&tdy.d!==ds&&tdy.msg){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 지난 날짜 문구 청소(이중주문 방지)
     const hm=lunchNowMin();
     if(hm<540||hm>564)return;              // 09:00~09:24만 집계 업로드
     const cfg=window._roomLunchCfg; if(!cfg)return;
-    const today=(room&&room.lunch&&room.lunch[todayStr()])||window._roomLunchToday;
-    if(today&&today.hold)return;             // 직접 주문 모드인 날은 자동발송 중단
+    const today=(room&&room.lunch&&room.lunch[ds])||window._roomLunchToday;
+    if(today&&today.hold){ if(tdy&&tdy.msg){cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{});} return; } // 직접 주문 모드: 자동발송 문구 제거
     const n=lunchCount(); if(!n)return;
     const msg=(cfg.tpl||'오늘 도시락 {n}개 부탁드립니다.').replace('{n}',n);
-    cfetch('/lunch/'+todayStr(),{method:'PUT',body:JSON.stringify({n,msg,t:Date.now()})}).catch(()=>{});
+    cfetch('/lunch/'+ds,{method:'PUT',body:JSON.stringify({n,msg,t:Date.now()})}).catch(()=>{});
+    cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({msg,n,d:ds})}).catch(()=>{}); // 단축어용 고정 주소
   }catch(e){}
 }
 function lunchSmsHref(n){
@@ -658,6 +662,7 @@ async function lunchHold(){ // 오늘 자동발송 끄고 직접 주문 모드
   window._roomLunchToday={hold:true,t:Date.now()};
   renderLunchBar();
   try{ await cfetch('/lunch/'+todayStr(),{method:'PUT',body:JSON.stringify({hold:true,t:Date.now()})});
+    await cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:todayStr()})});
     toast('오늘 자동발송을 껐습니다. 인원을 맞춰 직접 보내세요'); }
   catch(e){ toast('저장 실패 — 인터넷을 확인해 주세요'); }
 }
