@@ -134,9 +134,16 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 .modal{position:relative;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;}
 .row input,.row>div{min-width:0;}
 .modal-back{position:-webkit-sticky;position:sticky;top:2px;margin:0 0 10px -2px;display:block;width:40px;height:40px;border:none;border-radius:50%;background:rgba(93,63,211,.08);color:var(--purple);font-size:22px;font-weight:800;cursor:pointer;line-height:1;z-index:9;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
+<div id="joinSplash" style="display:none;position:fixed;inset:0;background:#472F92;z-index:9999;color:#fff;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:sans-serif;">
+  <div style="font-size:30px;font-weight:800;letter-spacing:1px;">Ri-<span style="color:#FFD141;">work</span></div>
+  <div style="margin-top:14px;font-size:15px;opacity:.85;">입장 준비 중입니다…<br>잠시만 기다려 주세요</div>
+  <div style="margin-top:24px;width:36px;height:36px;border:4px solid rgba(255,255,255,.25);border-top-color:#FFD141;border-radius:50%;animation:spin 1s linear infinite;"></div>
+</div>
+<script>if(/#(join|admin)=/.test(location.hash))document.getElementById('joinSplash').style.display='flex';</script>
 <div id="app">
   <div class="topbar">
     <img id="logoMain" src="" alt="reflash">
@@ -386,7 +393,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_030143'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_115817'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -688,7 +695,13 @@ function openRec(id,ds){
 function fillSched(){
   const e=emp(recEmpId);
   document.getElementById('recIn').value=e.schedule.start;
-  document.getElementById('recOut').value=e.schedule.end;
+  const now=new Date(), nowMin=now.getHours()*60+now.getMinutes();
+  if(recDate===todayStr()&&nowMin<toMin(e.schedule.end)){
+    document.getElementById('recOut').value='';   // 아직 근무시간 → 출근만 채워 "근무중"
+    toast('근무시간 중이라 출근만 채웠습니다 (퇴근시간 이후 다시 누르면 퇴근까지 채워집니다)');
+  }else{
+    document.getElementById('recOut').value=e.schedule.end;
+  }
 }
 function recAbsent(){
   const e=emp(recEmpId);
@@ -1098,7 +1111,10 @@ function adminDeviceLink(){
 }
 function adminFromHash(){
   const m=location.hash.match(/#admin=(.+)/);
-  if(!m)return;
+  if(!m){ if(!/#join=/.test(location.hash))hideSplash(); return; }
+  setTimeout(()=>{ try{ adminCore(m); }finally{ hideSplash(); adminOK=!!DB.settings.adminOK; try{renderKiosk();renderCloudStatus();}catch(e){} } },150);
+}
+function adminCore(m){
   try{
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     if(!(p.db&&p.ph))return;
@@ -1508,9 +1524,13 @@ function copyInvite(){
       .catch(()=>prompt('아래 내용을 복사해서 카톡으로 보내세요', msg));
   } else prompt('아래 내용을 복사해서 카톡으로 보내세요', msg);
 }
+function hideSplash(){const s=document.getElementById('joinSplash');if(s)s.style.display='none';}
 function joinFromHash(){
   const m=location.hash.match(/#join=(.+)/);
-  if(!m)return;
+  if(!m){ if(!/#admin=/.test(location.hash))hideSplash(); return; }
+  setTimeout(()=>{ try{ joinCore(m); }finally{ hideSplash(); try{renderKiosk();renderCloudStatus();}catch(e){} } },150);
+}
+function joinCore(m){
   try{
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     if(!(p.u&&p.r&&p.i))return;
