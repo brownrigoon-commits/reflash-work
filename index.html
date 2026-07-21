@@ -398,7 +398,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_130645'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_134206'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1104,7 +1104,7 @@ function adminDeviceLink(){
     const c=cloudCfg();
     if(c&&c.role==='admin'&&!c.key){ c.key=genKey(); save(); cloudPushPriv(); } // 기존 기기 업그레이드 시 키 생성
     const payload={db:DB,ph:effPinH()};
-    if(c&&c.role==='admin')payload.cloud={url:c.url,roomId:c.roomId,key:c.key};
+    if(c&&c.role==='admin')payload.cloud={url:c.url,roomId:c.roomId,key:c.key,own:(c.owner!==false?1:0)};
     const b=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
     if(b.length>60000){toast('데이터가 커서 링크로는 어렵습니다. [백업 다운로드]를 이용해 주세요');return;}
     const link=location.origin+location.pathname+'#admin='+b;
@@ -1128,7 +1128,10 @@ function adminCore(m){
     const c0=cloudCfg();
     // 이미 등록된 기기(홈 화면 앱 재실행 등)는 비밀번호 없이 그대로 통과 (새 링크의 암호키만 흡수)
     if(p.cloud&&c0&&c0.role==='admin'&&c0.roomId===p.cloud.roomId){
-      if(p.cloud.key&&!c0.key){ c0.key=p.cloud.key; save(); }
+      let ch=false;
+      if(p.cloud.key&&!c0.key){ c0.key=p.cloud.key; ch=true; }
+      if(p.cloud.own&&c0.owner===false){ c0.owner=true; ch=true; setTimeout(()=>toast('제작자(메인 관리자) 기기로 복귀했습니다'),400); }
+      if(ch)save();
       return;
     }
     // 옛 형식 링크(동기화 키 없음)를 데이터 있는 기기에서 열면 통째로 되돌아가는 사고 방지
@@ -1140,8 +1143,8 @@ function adminCore(m){
     if(pin===null)return;
     if(pinHash(pin)!==p.ph){alert('비밀번호가 올바르지 않습니다.');return;}
     DB=p.db;
-    // 링크로 추가된 기기는 공동 관리자: 모든 데이터 공유, 설정 탭만 잠금
-    if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin',owner:false,key:p.cloud.key||null};
+    // own 플래그(제작자 기기에서 만든 본인용 링크) → 소유자 유지, 그 외는 공동 관리자(설정 탭 잠금)
+    if(p.cloud)DB.settings.cloud={url:p.cloud.url,roomId:p.cloud.roomId,role:'admin',owner:p.cloud.own?true:false,key:p.cloud.key||null};
     save();
     setTimeout(()=>toast('관리자 기기 등록 완료! 이 화면 그대로 [홈 화면에 추가] 하세요'),400);
   }catch(e){ history.replaceState(null,'',location.pathname); toast('관리자 링크를 읽지 못했습니다'); }
