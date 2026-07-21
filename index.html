@@ -399,7 +399,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_161603'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_164510'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -639,8 +639,8 @@ function lunchPublish(room){ // cloudSync에서 호출
     window._roomLunchCfg=(room&&room.lunch&&room.lunch.cfg)||window._roomLunchCfg||null;
     const ds=todayStr();
     const tdy=room&&room.lunch&&room.lunch.today;
-    if(tdy&&tdy.d!==ds&&tdy.msg){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 지난 날짜 문구 청소(이중주문 방지)
     const hm=lunchNowMin();
+    if(tdy&&tdy.msg&&(tdy.d!==ds||hm>564)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 주문시간 지나면 문구 자동 삭제(주말·공휴일 오발송 차단)
     if(hm<540||hm>564)return;              // 09:00~09:24만 집계 업로드
     const cfg=window._roomLunchCfg; if(!cfg)return;
     const today=(room&&room.lunch&&room.lunch[ds])||window._roomLunchToday;
