@@ -399,7 +399,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_145215'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_145445'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -647,8 +647,7 @@ function lunchPublish(room){ // cloudSync에서 호출
 }
 function renderLunchBar(){
   const el=document.getElementById('lunchBar'); if(!el)return;
-  const c=cloudCfg();
-  const adminDev=!c||c.role==='admin';       // 관리자 권한 기기에만 표시
+  const adminDev=canPriv();                  // 관리자 이상(메인관리자·관리자) 기기에만 표시 — 부관리자·직원 제외
   const hm=lunchNowMin();
   const cfg=window._roomLunchCfg;
   const n=lunchCount();
