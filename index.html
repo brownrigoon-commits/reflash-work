@@ -13,7 +13,9 @@
 <link rel="apple-touch-icon" href="icon_riwork4.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon_riwork4.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json" id="maniLink">
+<script>/* 안드로이드: start_url 포함 manifest → 설치형 앱(아이콘 자동갱신). 아이폰: start_url 없는 manifest 유지(입장 링크 해시 보존) */
+if(!/iPhone|iPad|iPod/i.test(navigator.userAgent))document.getElementById('maniLink').setAttribute('href','manifest_android.json');</script>
 <meta name="apple-mobile-web-app-title" content="Ri-work">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -396,7 +398,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_130054'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260721_130645'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
