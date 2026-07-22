@@ -401,7 +401,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260722_144232'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260722_150346'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -642,16 +642,20 @@ function lunchPublish(room){ // cloudSync에서 호출
     window._roomLunch=(room&&room.lunch)||window._roomLunch||{};
     const ds=todayStr(), hm=lunchNowMin();
     const tdy=window._roomLunch.today;
-    if(tdy&&tdy.msg&&(tdy.d!==ds||hm>560)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 주문시간 후 문구 자동 삭제(오발송 차단)
+    // 날짜가 다르면 즉시 청소. 같은 날 청소는 09:35 이후에만 — 폰 시계 오차·단축어 지연으로 발송 직전에 지워지는 사고 방지
+    if(tdy&&tdy.msg&&(tdy.d!==ds||hm>=575)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); }
     if(hm>560)return;                      // 주문시간(9:20) 전이면 언제든 게시 — 이른 출근도 반영
     const cfg=window._roomLunchCfg; if(!cfg)return;
     const ov=lunchNode(ds);
     let n;
     if(ov&&ov.hold){ n=ov.n||0; }          // ★ 직접 주문 우선 (출근 집계 무시)
     else { n=lunchCount(); }               // 자동: 출근 집계
-    if(!n){ if(tdy&&tdy.msg)cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); return; }
+    if(!n){ if(tdy&&tdy.msg&&!(ov&&ov.hold))cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); return; }
+    // 이미 오늘자로 더 큰 인원이 게시돼 있으면 낮추지 않는다 (출근 인원은 하루 중 줄지 않음).
+    // PC 집계는 자동출퇴근 대상자까지 포함하므로 앱의 일시적 저평가가 이를 덮어쓰면 안 됨.
+    if(!(ov&&ov.hold)&&tdy&&tdy.d===ds&&tdy.msg&&(tdy.n||0)>n)return;
     const msg=(cfg.tpl||'오늘 도시락 {n}개 부탁드립니다.').replace('{n}',n);
-    if(!(ov&&ov.hold))cfetch('/lunch/'+ds,{method:'PUT',body:JSON.stringify({n,msg,t:Date.now()})}).catch(()=>{});
+    // /lunch/<날짜>(예약 노드)는 앱의 자동 경로에서 절대 쓰지 않는다 — 오래된 스냅샷이 직접 주문 예약을 지우는 사고 방지
     cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({msg,n,d:ds})}).catch(()=>{}); // 단축어용 고정 주소
   }catch(e){}
 }
