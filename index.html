@@ -401,7 +401,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260722_153350'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260723_075337'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1529,7 +1529,7 @@ async function sendNtfy(msg){ // 폰 푸시 발송 (앱 꺼져 있어도 수신)
     if(!(nc&&nc.ntfy)){ try{ nc=await cfetch('/notify'); if(nc)notifyCache=nc; }catch(e){} }
     if(!(nc&&nc.ntfy))return false;
     await fetch('https://ntfy.sh',{method:'POST',body:JSON.stringify({
-      topic:nc.ntfy, title:'리플래시 work', message:msg, tags:['bell'],
+      topic:nc.ntfy, title:'리플래시 work', message:msg, tags:['bell'], priority:5, // 최고 우선순위: 잠금화면·알림센터 표시 보장 (iOS/Android)
       click:location.origin+location.pathname })});
     return true;
   }catch(e){ return false; }
