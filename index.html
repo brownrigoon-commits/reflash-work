@@ -268,6 +268,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
         <div style="font-weight:700;font-size:13px;margin-bottom:4px;">📲 폰 푸시 알림 — 앱이 꺼져 있어도 수신</div>
         <div class="muted" id="ntfyInfo">무료 앱 "ntfy"를 설치하고 우리 회사 채널을 구독하면, 잠금화면 푸시로 받을 수 있습니다.</div>
         <button class="btn y wide" style="margin-top:8px;" onclick="copyNtfyGuide()">푸시알림 설치 안내문 복사 (카톡 전송용)</button>
+        <a class="btn p wide" id="ntfyOpen" style="text-decoration:none;margin-top:8px;display:block;text-align:center;" href="#">📲 내 폰에서 채널 구독하기 (ntfy 앱 열기)</a>
+        <button class="btn ghost wide" style="margin-top:8px;" onclick="testNtfy()">🔔 테스트 푸시 보내기</button>
       </div>
     </div>
     <div class="card">
@@ -399,7 +401,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260721_171148'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260722_144232'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -641,7 +643,7 @@ function lunchPublish(room){ // cloudSync에서 호출
     const ds=todayStr(), hm=lunchNowMin();
     const tdy=window._roomLunch.today;
     if(tdy&&tdy.msg&&(tdy.d!==ds||hm>560)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 주문시간 후 문구 자동 삭제(오발송 차단)
-    if(hm<540||hm>560)return;              // 09:00~09:20만 게시
+    if(hm>560)return;                      // 주문시간(9:20) 전이면 언제든 게시 — 이른 출근도 반영
     const cfg=window._roomLunchCfg; if(!cfg)return;
     const ov=lunchNode(ds);
     let n;
@@ -1507,10 +1509,18 @@ function pushEvent(kind,empId,hm){
   const ts=Date.now();
   const ev={k:kind,i:empId,n:e.name,t:hm,d:todayStr(),ts,r:(e.role==='admin'?'a':'s')};
   cfetch('/events/e'+ts+Math.random().toString(36).slice(2,5),{method:'PUT',body:JSON.stringify(ev)}).catch(()=>{});
-  if(notifyCache&&notifyCache.ntfy){
-    const msg=`${e.name}님이 ${kind==='in'?'출근':'퇴근'}했습니다 (${hm})`;
-    fetch('https://ntfy.sh',{method:'POST',body:JSON.stringify({topic:notifyCache.ntfy,title:'리플래시 work',message:msg})}).catch(()=>{});
-  }
+  sendNtfy(`${e.name}님이 ${kind==='in'?'출근':'퇴근'}했습니다 (${hm})`);
+}
+async function sendNtfy(msg){ // 폰 푸시 발송 (앱 꺼져 있어도 수신) — 캐시 없으면 클라우드에서 즉시 조회
+  try{
+    let nc=notifyCache;
+    if(!(nc&&nc.ntfy)){ try{ nc=await cfetch('/notify'); if(nc)notifyCache=nc; }catch(e){} }
+    if(!(nc&&nc.ntfy))return false;
+    await fetch('https://ntfy.sh',{method:'POST',body:JSON.stringify({
+      topic:nc.ntfy, title:'리플래시 work', message:msg, tags:['bell'],
+      click:location.origin+location.pathname })});
+    return true;
+  }catch(e){ return false; }
 }
 function shouldNotify(ev){
   const c=cloudCfg(); if(!c)return false;
@@ -1569,6 +1579,8 @@ function renderNotifyCard(){
   });
   list.innerHTML=h;
   const info=document.getElementById('ntfyInfo');
+  const openBtn=document.getElementById('ntfyOpen');
+  if(openBtn&&notifyCache&&notifyCache.ntfy)openBtn.href='https://ntfy.sh/'+notifyCache.ntfy;
   if(notifyCache&&notifyCache.ntfy)
     info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${notifyCache.ntfy}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
 }
@@ -1580,6 +1592,10 @@ async function saveNotify(){
   notifyCache={recips,ntfy:(notifyCache&&notifyCache.ntfy)||'rf-'+Math.random().toString(36).slice(2,12)};
   try{ await cfetch('/notify',{method:'PUT',body:JSON.stringify(notifyCache)}); toast('알림 수신자가 저장되었습니다'); }
   catch(e){ toast('저장 실패 — 인터넷 연결을 확인해 주세요'); }
+}
+async function testNtfy(){
+  const ok=await sendNtfy('테스트 알림입니다. 이 알림이 폰에 뜨면 설정 완료!');
+  toast(ok?'테스트 푸시를 보냈습니다 — 폰 알림을 확인하세요':'발송 실패: 클라우드 연동/인터넷을 확인해 주세요');
 }
 function copyNtfyGuide(){
   if(!(notifyCache&&notifyCache.ntfy)){toast('클라우드 연동 후 사용할 수 있습니다');return;}
