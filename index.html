@@ -406,7 +406,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260723_220926'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260723_221439'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -690,6 +690,24 @@ const GREET={
     in:['오늘도 좋은 하루 보내세요!','활기찬 하루의 시작! 화이팅!','오늘도 함께해요! 좋은 하루!'],
     out:['오늘도 수고 많으셨습니다!','고생했어요! 편안한 저녁 되세요~','내일 또 만나요! 푹 쉬세요~']}
 };
+// 날씨와 어울리는 저녁 메뉴 (가끔 퇴근 인사에 곁들임)
+const DINNER={
+  rain:['따끈한 파전에 막걸리','뜨끈한 칼국수','김치전과 수제비','얼큰한 짬뽕'],
+  snow:['김 모락모락 만두전골','뜨끈한 어묵탕','따뜻한 우동 한 그릇','수육에 뜨끈한 국물'],
+  hot:['시원한 냉면','고소한 콩국수','이열치열 삼계탕','새콤한 초계국수'],
+  warm:['치킨에 시원한 맥주','시원한 냉모밀','따뜻한 쌀국수','매콤 비빔국수'],
+  clear:['지글지글 삼겹살','싱싱한 회 한 접시','기분 내는 파스타','든든한 김치찌개'],
+  cloudy:['보글보글 부대찌개','바삭한 돈까스','뜨끈한 순두부찌개','매콤한 제육볶음'],
+  chilly:['뜨끈한 국밥','든든한 감자탕','매콤한 떡볶이에 김밥','따뜻한 우동'],
+  cold:['뜨끈한 설렁탕','얼큰한 곱창전골','시원칼칼 매운탕','밥도둑 김치찜'],
+  def:['보글보글 김치찌개','바삭한 치킨','지글지글 삼겹살','든든한 비빔밥']
+};
+function dinnerPick(doy){ // 이틀에 한 번꼴(40%)로만 추천 — "가끔"의 재미
+  if(doy==null)doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0).getTime())/864e5);
+  const h=((doy*2654435761)>>>0)%5; if(h>=2)return null;
+  const arr=DINNER[wxCat()]||DINNER.def;
+  return arr[(doy*7+3)%arr.length];
+}
 function wxCat(){
   const w=window._wx; if(!w)return 'def';
   const c=w.code;
@@ -725,7 +743,9 @@ function showPunchPop(kind,empId){
   const n=(kind==='in')?lunchPopN():null;
   let el=document.getElementById('lunchPop');
   if(!el){ el=document.createElement('div'); el.id='lunchPop'; document.body.appendChild(el); }
-  const greet=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--txt-sub);line-height:1.6;"><b style="color:var(--purple-dark);">${nick}</b>, ${gr.msg}</div>`;
+  const dm=(kind==='out')?dinnerPick():null;
+  const greet=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--txt-sub);line-height:1.6;"><b style="color:var(--purple-dark);">${nick}</b>, ${gr.msg}</div>`
+    +(dm?`<div style="margin-top:8px;font-size:13px;background:var(--yellow-soft);border-radius:10px;padding:8px 12px;">🍽️ 오늘 저녁엔 <b style="color:var(--purple-dark);">${dm}</b> 어때요?</div>`:'');
   if(n!=null){
     el.innerHTML=`<div class="bento">🍱</div>
       <div style="font-weight:800;font-size:19px;margin-top:8px;color:var(--purple-dark);">도시락 +1!</div>
