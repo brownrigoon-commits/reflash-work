@@ -55,6 +55,11 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 .card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(55,36,112,.05);}
 .btn{display:inline-block;border:none;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;}
 #pg-set button:disabled,#pg-set input:disabled{opacity:.35;pointer-events:none;}
+@keyframes lunchpop{0%{transform:translate(-50%,-50%) scale(.3);opacity:0}45%{transform:translate(-50%,-50%) scale(1.1);opacity:1}62%{transform:translate(-50%,-50%) scale(.96)}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@keyframes lunchbounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+#lunchPop{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:#fff;border-radius:22px;padding:22px 34px;text-align:center;z-index:300;box-shadow:0 12px 40px rgba(55,36,112,.35);display:none;pointer-events:none;border:2px solid var(--yellow);}
+#lunchPop.on{display:block;animation:lunchpop .45s ease-out;}
+#lunchPop .bento{font-size:46px;line-height:1;display:inline-block;animation:lunchbounce .7s ease-in-out .45s 2;}
 .btn.p{background:var(--purple);color:#fff;}
 .btn.y{background:var(--yellow);color:var(--purple-dark);}
 .btn.ghost{background:#fff;border:1.5px solid var(--purple);color:var(--purple);}
@@ -401,7 +406,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260723_075337'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260723_220137'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -534,6 +539,7 @@ function doPunch(kind){
     r.out=hm; toast(`${e.name}님 퇴근 완료! 수고하셨습니다 (${hm})`);
   }
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
+  if(kind==='in')maybeLunchPop(); // 출근 시 "도시락 +1" 재미 팝업
 }
 
 /* ================== 근태 판정 ================== */
@@ -644,6 +650,25 @@ function lunchNowMin(){ const n=new Date(); return (window._testHM!=null)?window
 function lunchNextOrder(){ const d=new Date(); const hm=lunchNowMin(); const isWd=x=>{const g=x.getDay();return g>=1&&g<=5;}; if(!(isWd(d)&&hm<=560)){ do{ d.setDate(d.getDate()+1); }while(!isWd(d)); } return d; }
 function lunchExpected(d){ const ds=fmtD(d); return activeEmps(ds).filter(e=>isWorkday(e,d)).length; } // 그 요일 근무 예정 인원(요일별 근무자 자동 반영)
 function lunchNode(ds){ const L=window._roomLunch||{}; return L[ds]||null; }
+// 출근 직후 재미 팝업: "도시락 +1!" (주문 마감 전 평일에만, 직접 주문 예약일 제외)
+function showLunchPop(n){
+  let el=document.getElementById('lunchPop');
+  if(!el){ el=document.createElement('div'); el.id='lunchPop'; document.body.appendChild(el); }
+  el.innerHTML=`<div class="bento">🍱</div>
+    <div style="font-weight:800;font-size:19px;margin-top:8px;color:var(--purple-dark);">도시락 +1!</div>
+    <div class="muted" style="margin-top:4px;font-size:13px;">오늘 <b style="color:var(--purple);font-size:15px;">${n}개</b> 주문 예정</div>`;
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  clearTimeout(window._lunchPopT); window._lunchPopT=setTimeout(()=>el.classList.remove('on'),2400);
+}
+function maybeLunchPop(){
+  try{
+    const cfg=window._roomLunchCfg; if(!cfg||!cfg.vendor)return;
+    const d=new Date(), g=d.getDay(); if(g<1||g>5)return;   // 평일만
+    if(lunchNowMin()>560)return;                             // 9:20 이후는 오늘 주문 마감
+    const ov=lunchNode(todayStr()); if(ov&&ov.hold)return;   // 직접 주문 예약일은 개수 고정
+    showLunchPop(lunchCount());
+  }catch(e){}
+}
 function lunchPublish(room){ // cloudSync에서 호출
   try{
     window._roomLunchCfg=(room&&room.lunch&&room.lunch.cfg)||window._roomLunchCfg||null;
@@ -683,6 +708,7 @@ function lunchDefaultN(ds){
 function lunchOpenPanel(){
   window._lunchSel=fmtD(lunchNextOrder());
   window._lunchN=lunchDefaultN(window._lunchSel);
+  if(!canPriv())return; // 직접 주문은 관리자 이상만
   window._lunchPanel=true; renderLunchBar();
 }
 function lunchClosePanel(){ window._lunchPanel=false; renderLunchBar(); }
@@ -714,25 +740,27 @@ async function lunchClearManual(){
 }
 function renderLunchBar(){
   const el=document.getElementById('lunchBar'); if(!el)return;
-  if(!canPriv()){el.innerHTML='';return;}   // 관리자 이상 기기 전용
+  const mgr=canPriv();                       // 관리자 이상: 직접 주문 버튼·예약 상세 표시. 직원: 개수만 공개
   const cfg=window._roomLunchCfg;
   if(!cfg||!cfg.vendor){el.innerHTML='';return;}
   const t=lunchNextOrder(), tds=fmtD(t);
   const ov=lunchNode(tds);
   const dateTxt=`${t.getFullYear()}.${String(t.getMonth()+1).padStart(2,'0')}.${String(t.getDate()).padStart(2,'0')}(${DAYNM[t.getDay()]}) 오전 9:20`;
   let head;
-  if(ov&&ov.hold){
+  if(ov&&ov.hold&&mgr){
     head=(ov.n||0)===0
       ?`✋ <b style="color:#D95B23;">주문 안 함</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} (직접 주문 예약)</span>`
       :`✋ <b style="color:#D95B23;">직접 주문 ${ov.n}개</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 발송예정</span>`;
+  }else if(ov&&ov.hold){ // 직원에게는 직접 주문 여부를 숨기고 개수만
+    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${ov.n||0}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 주문예정</span>`;
   }else{
     const n=(tds===todayStr())?lunchCount():0;
-    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${n}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 자동주문예정</span>`;
+    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${n}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} ${mgr?'자동주문예정':'주문예정'}</span>`;
   }
-  if(!window._lunchPanel){
+  if(!window._lunchPanel||!mgr){
     el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:13px 14px;">
       <div style="font-weight:800;min-width:0;line-height:1.5;">${head}</div>
-      <button class="btn ghost" style="padding:9px 13px;font-size:13px;white-space:nowrap;flex-shrink:0;" onclick="lunchOpenPanel()">✋ 직접 주문</button></div>`;
+      ${mgr?`<button class="btn ghost" style="padding:9px 13px;font-size:13px;white-space:nowrap;flex-shrink:0;" onclick="lunchOpenPanel()">✋ 직접 주문</button>`:''}</div>`;
     return;
   }
   const sel=window._lunchSel||tds, n=window._lunchN||0;
