@@ -320,6 +320,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <button class="btn p" style="flex:1;" id="btnIn" onclick="doPunch('in')">출근하기</button>
     <button class="btn y" style="flex:1;" id="btnOut" onclick="doPunch('out')">퇴근하기</button>
   </div>
+  <button id="btnUndo" class="btn red wide" style="margin-top:8px;display:none;" onclick="undoPunch()">↩️ 잘못 눌렀어요 — 기록 취소</button>
   <button class="btn ghost wide" style="margin-top:10px;" onclick="closeM('mdPunch')">닫기</button>
 </div></div>
 
@@ -408,7 +409,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260724_071404'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260724_081543'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -522,6 +523,12 @@ function openPunch(id){
   if(!r||!r.in){ st.innerHTML='<span class="tag hol">아직 출근 전입니다</span>'; bi.disabled=false; bo.disabled=true; }
   else if(!r.out){ st.innerHTML=`<span class="tag ok">출근 ${r.in} — 근무중</span>`; bi.disabled=true; bo.disabled=false; }
   else { st.innerHTML=`<span class="tag man">출근 ${r.in} · 퇴근 ${r.out} 완료</span>`; bi.disabled=true; bo.disabled=true; }
+  const bu=document.getElementById('btnUndo');
+  if(bu){ // 잘못 누른 기록 취소 (오늘 기록이 있을 때만)
+    if(r&&r.out){ bu.style.display='block'; bu.textContent=`↩️ 잘못 눌렀어요 — 퇴근(${r.out}) 취소`; }
+    else if(r&&r.in){ bu.style.display='block'; bu.textContent=`↩️ 잘못 눌렀어요 — 출근(${r.in}) 취소`; }
+    else bu.style.display='none';
+  }
   tick(); openM('mdPunch');
 }
 function doPunch(kind){
@@ -532,6 +539,7 @@ function doPunch(kind){
   if(kind==='in'){
     if(r.in){toast('이미 출근 처리되었습니다');return;}
     if(toMin(hm)<toMin(e.schedule.start))hm=e.schedule.start; // 일찍 눌러도 정시 출근으로 기록
+    if(r.off){ delete r.off; delete r.manual; } // 취소/결근 표식 위에 다시 출근하는 경우 정리
     r.in=hm; toast(`${e.name}님 출근 완료! (${hm})`);
   }
   else{
@@ -542,6 +550,23 @@ function doPunch(kind){
   }
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
   showPunchPop(kind,punchEmpId); // 도시락 +1(출근 시) + 이름 부르는 날씨 인사말
+}
+function undoPunch(){ // 잘못 누른 출퇴근 되돌리기 (오늘 기록, 마지막 단계부터)
+  const ds=todayStr(), rec=(DB.records[ds]||{})[punchEmpId];
+  if(!rec||(!rec.in&&!rec.out)){toast('취소할 기록이 없습니다');return;}
+  const e=emp(punchEmpId);
+  if(rec.out){
+    if(!confirm(`${e.name}님의 퇴근 기록(${rec.out})을 취소할까요?\n다시 근무중 상태가 되고, 퇴근을 다시 누를 수 있습니다.`))return;
+    delete rec.out;
+    save(); queueRec(ds,punchEmpId);
+    toast('퇴근이 취소되었습니다 — 다시 근무중!');
+  } else {
+    if(!confirm(`${e.name}님의 출근 기록(${rec.in})을 취소할까요?\n출근 전 상태로 돌아가고, 출근을 다시 누를 수 있습니다.`))return;
+    DB.records[ds][punchEmpId]={off:true,manual:true}; // 삭제 대신 표식 저장(다른 기기에서 기록이 되살아나는 것 방지)
+    save(); queueRec(ds,punchEmpId);
+    toast('출근이 취소되었습니다 — 다시 출근을 누를 수 있어요');
+  }
+  openPunch(punchEmpId); renderKiosk();
 }
 
 /* ================== 근태 판정 ================== */
