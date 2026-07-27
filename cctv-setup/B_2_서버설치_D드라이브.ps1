@@ -121,10 +121,10 @@ pathDefaults:
 paths:
   # 카메라 등록 예시 - 실제 IP로 바꿔 사용
   # b01:
-  #   source: rtsp://Reflashcam:rfcam2026@192.168.0.101:554/stream1
+  #   source: rtsp://Reflashcam:[카메라비밀번호]@192.168.0.101:554/stream1
   #   record: yes
   # b01sub:
-  #   source: rtsp://Reflashcam:rfcam2026@192.168.0.101:554/stream2
+  #   source: rtsp://Reflashcam:[카메라비밀번호]@192.168.0.101:554/stream2
 "@
 
 if (Test-Path 'C:\cctv\mediamtx\mediamtx.yml') {
