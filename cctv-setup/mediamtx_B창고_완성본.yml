@@ -1,0 +1,89 @@
+# B창고 CCTV 녹화서버 설정 - mediamtx v1.19.3
+# 카메라 7대 / 녹화 저장: D드라이브 / Tailscale: 100.71.153.21
+
+logLevel: info
+logDestinations: [stdout, file]
+logFile: D:/cctv/mediamtx.log
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+playback: yes
+playbackAddress: :9996
+playbackAllowOrigins: ['*']
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsAllowOrigins: ['*']
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigins: ['*']
+webrtcAdditionalHosts: ['100.71.153.21']
+
+pathDefaults:
+  rtspTransport: tcp
+  record: no
+  recordPath: D:/cctv/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1h
+  recordDeleteAfter: 720h
+
+paths:
+  # b01 - B창고_입구 전체 (C100)
+  b01:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.100:554/stream1
+    record: yes
+  b01sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.100:554/stream2
+    sourceOnDemand: yes
+
+  # b02 - B창고 2층 컴터위1 (C110)
+  b02:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.102:554/stream1
+    record: yes
+  b02sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.102:554/stream2
+    sourceOnDemand: yes
+
+  # b03 - B창고 1층 컴터위1 (C110)
+  b03:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.103:554/stream1
+    record: yes
+  b03sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.103:554/stream2
+    sourceOnDemand: yes
+
+  # b04 - B창고 2층 컴터위2 (C110)
+  b04:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.104:554/stream1
+    record: yes
+  b04sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.104:554/stream2
+    sourceOnDemand: yes
+
+  # b05 - 1층 작업다이3 (C110)
+  b05:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.105:554/stream1
+    record: yes
+  b05sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.105:554/stream2
+    sourceOnDemand: yes
+
+  # b06 - B창고 1층 작업다이 2 (C110)
+  b06:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.106:554/stream1
+    record: yes
+  b06sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.106:554/stream2
+    sourceOnDemand: yes
+
+  # b07 - B창고 외부1_310 (C310, 베란다)
+  b07:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.107:554/stream1
+    record: yes
+  b07sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.107:554/stream2
+    sourceOnDemand: yes
