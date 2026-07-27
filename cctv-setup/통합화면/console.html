@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>리플래시 CCTV 타임점프 콘솔 — A창고 + B창고</title>
+<style>
+  :root { --bg:#14171b; --panel:#1e2329; --line:#333a42; --ink:#e8eaec; --mut:#6b7480; --amber:#f0b429; --blue:#4a9eff; --red:#e05a4a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Malgun Gothic","Segoe UI",sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:10px 18px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; color:var(--amber); }
+  .tabs { display:flex; gap:6px; margin-left:auto; }
+  .tab { padding:8px 22px; border-radius:8px; border:1px solid var(--line); background:none; color:var(--mut); font-size:15px; font-weight:700; cursor:pointer; }
+  .tab.on { background:var(--amber); color:#14171b; border-color:var(--amber); }
+  main { padding:14px 18px; }
+  .hint { font-size:13px; color:var(--mut); margin:0 0 10px; }
+
+  /* 라이브 그리드 */
+  #live .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  @media (max-width:1100px) { #live .grid { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:640px)  { #live .grid { grid-template-columns:1fr; } }
+  .cell { position:relative; background:#000; border:1px solid var(--line); border-radius:8px; overflow:hidden; aspect-ratio:16/9; }
+  .cell video { width:100%; height:100%; object-fit:contain; transform-origin:0 0; display:block; }
+  .cell .lbl { position:absolute; top:6px; left:8px; z-index:2; background:rgba(0,0,0,.65); color:var(--amber); font-size:13px; font-weight:700; padding:2px 10px; border-radius:6px; pointer-events:none; }
+  .cell .big { position:absolute; top:6px; right:8px; z-index:2; background:rgba(0,0,0,.65); color:var(--ink); border:1px solid var(--line); font-size:15px; padding:2px 10px; border-radius:6px; cursor:pointer; }
+  .cell .big:hover { background:var(--amber); color:#14171b; }
+  .cell.wh-b .lbl { color:#7fd4e8; }
+
+  /* 창고 구분 소제목 */
+  .sect { grid-column:1/-1; display:flex; align-items:center; gap:10px; margin:6px 0 0; font-size:14px; font-weight:700; color:var(--mut); }
+  .sect::after { content:''; flex:1; height:1px; background:var(--line); }
+  .sect.b { color:#7fd4e8; }
+
+  /* 크게 보기 모달 */
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:50; display:none; align-items:center; justify-content:center; }
+  #modal .box { width:92vw; }
+  #modal .mhead { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  #modal .mhead b { color:var(--amber); font-size:17px; }
+  #modal .mhead .x { margin-left:auto; background:#2a323b; color:var(--ink); border:1px solid var(--line); border-radius:8px; font-size:16px; padding:8px 18px; cursor:pointer; }
+  #mwrap { width:100%; height:82vh; overflow:hidden; border-radius:10px; background:#000; }
+  #mplayer { width:100%; height:100%; object-fit:contain; transform-origin:0 0; display:block; }
+
+  /* 타임점프 */
+  .bar { display:flex; flex-wrap:wrap; gap:14px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .bar > label { font-size:14px; color:var(--mut); }
+  select { background:#12151a; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:16px; font-family:Consolas,monospace; cursor:pointer; }
+  select#cam { font-family:"Malgun Gothic",sans-serif; }
+  button.go { background:var(--amber); color:#14171b; font-size:17px; font-weight:800; border:0; border-radius:8px; padding:12px 30px; cursor:pointer; }
+  button.sub { background:#2a323b; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; }
+  button.sub:hover, button.go:hover { filter:brightness(1.15); }
+  #vwrap { width:100%; overflow:hidden; border-radius:10px; background:#000; position:relative; }
+  #player { width:100%; max-height:calc(100vh - 290px); background:#000; display:block; transform-origin:0 0; }
+  #vwrap:fullscreen { border-radius:0; }
+  #vwrap:fullscreen #player { max-height:100vh; height:100vh; }
+  #player::-webkit-media-controls-fullscreen-button { display:none !important; }
+  #mplayer::-webkit-media-controls-fullscreen-button { display:none !important; }
+  .vpanel { position:absolute; right:12px; top:12px; z-index:6; display:grid; grid-template-columns:1fr 1fr; gap:6px;
+            background:rgba(16,19,24,.82); border:1px solid var(--line); border-radius:10px; padding:10px; width:176px;
+            max-height:calc(100% - 24px); overflow-y:auto; }
+  .vpanel button { background:#2a323b; color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:8px 2px; font-size:13.5px; cursor:pointer; }
+  .vpanel button:hover { background:var(--amber); color:#14171b; }
+  .vpanel select { padding:7px 6px; font-size:14px; width:100%; grid-column:1/-1; }
+  .vpanel label { font-size:12px; color:var(--mut); text-align:center; grid-column:1/-1; }
+  .vpanel .vdiv { border-top:1px solid var(--line); margin:2px 0; grid-column:1/-1; }
+  .vpanel .zlvl { grid-column:1/-1; text-align:center; }
+  .vpanel .sp2 { grid-column:1/-1; }
+  .zlvl { font-family:Consolas,monospace; font-size:14px; color:var(--amber); min-width:50px; text-align:center; }
+  .ctl { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+  #msg { margin-top:8px; font-size:15px; color:var(--mut); min-height:22px; }
+  #msg.err { color:var(--red); }
+  #nowplay { color:var(--blue); font-weight:700; font-size:15px; margin-left:8px; }
+
+  /* 아이폰식 시각 휠 */
+  .wheelbox { position:relative; display:flex; align-items:center; gap:2px; background:#101318; border:1px solid var(--line); border-radius:12px; padding:0 10px; }
+  .wcol { height:150px; width:58px; overflow-y:scroll; scroll-snap-type:y mandatory; scrollbar-width:none; text-align:center; padding:57px 0; }
+  .wcol::-webkit-scrollbar { display:none; }
+  .wcol div { height:36px; line-height:36px; scroll-snap-align:center; font-family:Consolas,monospace; font-size:19px; color:var(--mut); cursor:pointer; }
+  .wcol div.on { color:var(--ink); font-weight:700; font-size:21px; }
+  .wunit { font-size:14px; color:var(--mut); padding:0 2px; }
+  .wband { position:absolute; left:6px; right:6px; top:57px; height:36px; border-top:1.5px solid var(--amber); border-bottom:1.5px solid var(--amber); border-radius:8px; background:rgba(240,180,41,.07); pointer-events:none; }
+  .wfade { position:absolute; left:0; right:0; height:44px; pointer-events:none; }
+  .wfade.top { top:0; background:linear-gradient(#101318, transparent); border-radius:12px 12px 0 0; }
+  .wfade.bot { bottom:0; background:linear-gradient(transparent, #101318); border-radius:0 0 12px 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📹 리플래시 CCTV — A창고(가좌동2층) + B창고(뉴창고)</h1>
+  <span id="nowplay"></span>
+  <div class="tabs">
+    <button class="tab on" id="tabLive" onclick="showTab('live')">라이브 전체</button>
+    <button class="tab" id="tabJump" onclick="showTab('jump')">타임점프 재생</button>
+  </div>
+</header>
+<main>
+  <section id="live">
+    <p class="hint">💡 마우스 휠 = 그 지점 확대 · 확대 중 드래그 = 이동 · <b style="color:var(--amber)">더블클릭 = 그 카메라 타임점프 재생</b> · ⛶ = 고화질 크게 보기</p>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section id="jump" style="display:none">
+    <div class="bar">
+      <button class="sub" onclick="history.back()" style="font-weight:800; font-size:15px">← 라이브</button>
+      <label>카메라</label>
+      <select id="cam"></select>
+      <label>날짜</label>
+      <select id="date"></select>
+      <label>시각</label>
+      <div class="wheelbox">
+        <div class="wcol" id="whh"></div><span class="wunit">시</span>
+        <div class="wcol" id="wmi"></div><span class="wunit">분</span>
+        <div class="wcol" id="wss"></div><span class="wunit">초</span>
+        <div class="wband"></div>
+        <div class="wfade top"></div>
+        <div class="wfade bot"></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px">
+        <label style="font-size:12px; color:var(--mut)">직접 입력 (엔터 = 재생)</label>
+        <input type="text" id="tin" placeholder="14:32:10" style="background:#12151a; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px; width:118px; font-family:Consolas,monospace; font-size:17px; text-align:center">
+      </div>
+      <label>길이</label>
+      <select id="dur">
+        <option value="60">1분</option>
+        <option value="300" selected>5분</option>
+        <option value="600">10분</option>
+        <option value="1800">30분</option>
+        <option value="3600">1시간</option>
+      </select>
+      <button class="go" onclick="play()">▶ 재생</button>
+      <button class="sub" onclick="saveClip()">⬇ 클립 저장</button>
+    </div>
+    <div id="vwrap">
+      <video id="player" controls controlslist="nofullscreen" autoplay muted></video>
+      <div class="vpanel">
+        <button onclick="shift(-600)">−10분</button>
+        <button onclick="shift(600)">+10분</button>
+        <button onclick="shift(-60)">−1분</button>
+        <button onclick="shift(60)">+1분</button>
+        <button onclick="shift(-10)">−10초</button>
+        <button onclick="shift(10)">+10초</button>
+        <div class="vdiv"></div>
+        <label>배속</label>
+        <select id="rate" onchange="document.getElementById('player').playbackRate=parseFloat(this.value)">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+          <option value="16">16×</option>
+        </select>
+        <div class="vdiv"></div>
+        <button onclick="pz.zoomIn()">🔍＋확대</button>
+        <button onclick="pz.zoomOut()">🔍－축소</button>
+        <button onclick="pz.reset()">원본</button>
+        <button onclick="toggleFs()">⛶ 전체</button>
+        <span class="zlvl" id="pzlvl">100%</span>
+      </div>
+    </div>
+    <div id="msg"></div>
+  </section>
+</main>
+
+<!-- 크게 보기 모달 -->
+<div id="modal">
+  <div class="box">
+    <div class="mhead">
+      <b id="mtitle"></b>
+      <span class="zlvl" id="mzlvl">100%</span>
+      <button class="x" onclick="closeModal()">✕ 닫기 (ESC)</button>
+    </div>
+    <div id="mwrap"><video id="mplayer" muted autoplay playsinline></video></div>
+  </div>
+</div>
+
+<script>
+const SERVER = 'http://' + (location.hostname || '127.0.0.1');   // 기본(로컬=A) 서버
+const KEEP_DAYS = 30;                        // 날짜 선택 목록 범위 = 녹화 보존 기간
+// 여러 창고를 한 화면에: 각 카메라에 host를 지정하면 그 서버에서 영상을 가져온다.
+//  - A창고 : Tailscale 100.91.140.80
+//  - B창고 : Tailscale 100.71.153.21   (2026-07-27 합류, 카메라 7대)
+// ※ 이 파일은 바탕화면에 두고 더블클릭해도 되도록 A/B 양쪽 host를 모두 명시했다.
+//   (host를 생략하면 파일을 연 위치를 서버로 여겨 로컬에서 열 때 동작하지 않는다)
+const CAMS = [
+  // ── A창고(가좌동2층) ──
+  { no:'A-01', name:'2층사무실',      path:'a01', host:'100.91.140.80', wh:'A' },
+  { no:'A-02', name:'2층 전체',       path:'a02', host:'100.91.140.80', wh:'A' },
+  { no:'A-03', name:'2층 작업대3',    path:'a03', host:'100.91.140.80', wh:'A' },
+  { no:'A-04', name:'2층 작업장3',    path:'a04', host:'100.91.140.80', wh:'A' },
+  { no:'A-05', name:'2층 택배작업대', path:'a05', host:'100.91.140.80', wh:'A' },
+  // ── B창고(뉴창고) ──
+  { no:'B-01', name:'입구 전체',      path:'b01', host:'100.71.153.21', wh:'B' },
+  { no:'B-02', name:'2층 컴터위1',    path:'b02', host:'100.71.153.21', wh:'B' },
+  { no:'B-03', name:'1층 컴터위1',    path:'b03', host:'100.71.153.21', wh:'B' },
+  { no:'B-04', name:'2층 컴터위2',    path:'b04', host:'100.71.153.21', wh:'B' },
+  { no:'B-05', name:'1층 작업다이3',  path:'b05', host:'100.71.153.21', wh:'B' },
+  { no:'B-06', name:'1층 작업다이2',  path:'b06', host:'100.71.153.21', wh:'B' },
+  { no:'B-07', name:'외부1 (베란다)', path:'b07', host:'100.71.153.21', wh:'B' },
+];
+function baseFor(c) { return 'http://' + (c && c.host ? c.host : (location.hostname || '127.0.0.1')); }
+let retried = false;
+
+// ══════════ 공통: 확대/축소 (휠 줌 + 드래그 이동 + 더블클릭 리셋) ══════════
+function attachZoom(wrap, el, lvlEl, noDblReset) {
+  let z = 1, tx = 0, ty = 0, dragging = false, lx = 0, ly = 0;
+  function apply() {
+    el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + z + ')';
+    if (lvlEl) lvlEl.textContent = Math.round(z * 100) + '%';
+    wrap.style.cursor = (z > 1) ? 'grab' : '';
+  }
+  function clampPos() {
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    tx = Math.min(0, Math.max(W - W * z, tx));
+    ty = Math.min(0, Math.max(H - H * z, ty));
+  }
+  function zoomAt(cx, cy, f) {
+    const nz = Math.min(8, Math.max(1, z * f));
+    if (nz === z) return;
+    tx = cx - (cx - tx) * (nz / z);
+    ty = cy - (cy - ty) * (nz / z);
+    z = nz;
+    if (z === 1) { tx = 0; ty = 0; } else clampPos();
+    apply();
+  }
+  wrap.addEventListener('wheel', e => {
+    if (e.target.closest('.vpanel,.big')) return;   // 패널 위에서는 줌 동작 안 함
+    e.preventDefault();
+    const r = wrap.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.25 : 0.8);
+  }, { passive:false });
+  wrap.addEventListener('mousedown', e => {
+    if (e.target.closest('.vpanel,.big')) return;
+    if (z <= 1) return;
+    if (el.controls && (e.clientY - wrap.getBoundingClientRect().top) > wrap.clientHeight - 52) return; // 재생 컨트롤 영역 제외
+    dragging = true; lx = e.clientX; ly = e.clientY; wrap.style.cursor = 'grabbing'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    tx += e.clientX - lx; ty += e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    clampPos(); apply();
+  });
+  window.addEventListener('mouseup', () => { if (dragging) { dragging = false; wrap.style.cursor = 'grab'; } });
+  if (!noDblReset) wrap.addEventListener('dblclick', e => {
+    if (e.target.closest('.vpanel,.big,.mhead')) return;   // 버튼 패널 위 더블클릭은 무시
+    e.preventDefault(); z = 1; tx = 0; ty = 0; apply();
+  });
+  apply();
+  return {
+    zoomIn:  () => zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.25),
+    zoomOut: () => zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 0.8),
+    reset:   () => { z = 1; tx = 0; ty = 0; apply(); }
+  };
+}
+
+// ══════════ 공통: 라이브 연결 (WebRTC, 끊기면 자동 재접속) ══════════
+function liveConnect(video, path, base) {
+  base = base || SERVER;
+  let stopped = false, pc = null, timer = null;
+  async function start() {
+    try {
+      pc = new RTCPeerConnection();
+      pc.addTransceiver('video', { direction:'recvonly' });
+      pc.addTransceiver('audio', { direction:'recvonly' });
+      const ms = new MediaStream();
+      video.srcObject = ms;
+      pc.ontrack = ev => ms.addTrack(ev.track);
+      pc.onconnectionstatechange = () => {
+        if (!stopped && ['failed','disconnected','closed'].includes(pc.connectionState)) restart();
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await new Promise(res => {
+        if (pc.iceGatheringState === 'complete') return res();
+        pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') res(); });
+        setTimeout(res, 800);
+      });
+      const r = await fetch(base + ':8889/' + path + '/whep', { method:'POST', headers:{'Content-Type':'application/sdp'}, body: pc.localDescription.sdp });
+      if (!r.ok) throw new Error('whep ' + r.status);
+      await pc.setRemoteDescription({ type:'answer', sdp: await r.text() });
+    } catch (e) { restart(); }
+  }
+  function restart() {
+    if (stopped) return;
+    try { if (pc) pc.close(); } catch (_) {}
+    clearTimeout(timer);
+    timer = setTimeout(start, 3000);
+  }
+  start();
+  return { stop() { stopped = true; clearTimeout(timer); try { if (pc) pc.close(); } catch (_) {} } };
+}
+
+// ══════════ 카메라 목록 ══════════
+const camSel = document.getElementById('cam');
+CAMS.forEach((c,i) => camSel.add(new Option(c.no + ' · ' + c.name, i)));
+
+// ══════════ 날짜 목록 (2026-07-24 형식) ══════════
+const dateSel = document.getElementById('date');
+function isoLocal(d) { const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+for (let i = 0; i < KEEP_DAYS; i++) {
+  const d = new Date(); d.setDate(d.getDate() - i);
+  dateSel.add(new Option(isoLocal(d), isoLocal(d)));
+}
+
+// ══════════ 아이폰식 휠 ══════════
+const ITEM_H = 36;
+function makeWheel(id, max, onChange) {
+  const el = document.getElementById(id);
+  for (let i = 0; i <= max; i++) {
+    const d = document.createElement('div');
+    d.textContent = String(i).padStart(2,'0');
+    d.onclick = () => el.scrollTo({ top: i*ITEM_H, behavior: 'smooth' });
+    el.appendChild(d);
+  }
+  let val = 0;
+  function paint() { [...el.children].forEach((c,i) => c.className = (i===val) ? 'on' : ''); }
+  el.addEventListener('scroll', () => {
+    const v = Math.max(0, Math.min(max, Math.round(el.scrollTop / ITEM_H)));
+    if (v !== val) { val = v; paint(); if (onChange) onChange(); }
+  });
+  paint();
+  return {
+    get: () => val,
+    set: (v) => { val = v; el.scrollTop = v*ITEM_H; paint(); if (onChange) onChange(); }
+  };
+}
+const tin = document.getElementById('tin');
+function syncTin() {
+  const p = n => String(n).padStart(2,'0');
+  tin.value = p(wh.get()) + ':' + p(wm.get()) + ':' + p(ws.get());
+}
+function applyTin(andPlay) {
+  let t = tin.value.trim().replace(/[.\s]/g, ':');
+  if (/^\d{1,2}:\d{1,2}$/.test(t)) t += ':00';
+  const m = t.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})$/);
+  const msg = document.getElementById('msg');
+  if (!m) { msg.className='err'; msg.textContent='시각은 14:32:10 형식으로 입력해주세요.'; return; }
+  wh.set(Math.min(23, +m[1])); wm.set(Math.min(59, +m[2])); ws.set(Math.min(59, +m[3]));
+  if (andPlay) play();
+}
+const wh = makeWheel('whh', 23, syncTin);
+const wm = makeWheel('wmi', 59, syncTin);
+const ws = makeWheel('wss', 59, syncTin);
+tin.addEventListener('keydown', e => { if (e.key === 'Enter') applyTin(true); });
+tin.addEventListener('change', () => applyTin(false));
+const now5 = new Date(Date.now() - 5*60000);
+setTimeout(() => { wh.set(now5.getHours()); wm.set(now5.getMinutes()); ws.set(0); syncTin(); }, 50);
+
+// ══════════ 라이브 그리드 (칸마다 확대/축소 가능) ══════════
+const grid = document.getElementById('grid');
+let lastWh = null;
+CAMS.forEach((c,i) => {
+  if (c.wh && c.wh !== lastWh) {           // 창고가 바뀌면 구분선 한 줄
+    lastWh = c.wh;
+    const h = document.createElement('div');
+    h.className = 'sect' + (c.wh === 'B' ? ' b' : '');
+    h.textContent = (c.wh === 'A') ? 'A창고 · 가좌동2층' : 'B창고 · 뉴창고';
+    grid.appendChild(h);
+  }
+  const d = document.createElement('div');
+  d.className = 'cell' + (c.wh === 'B' ? ' wh-b' : '');
+  const v = document.createElement('video');
+  v.muted = true; v.autoplay = true; v.playsInline = true;
+  d.appendChild(v);
+  d.insertAdjacentHTML('beforeend',
+    '<span class="lbl">' + c.no + ' ' + c.name + '</span>' +
+    '<button class="big" title="고화질 크게 보기" onclick="openModal(' + i + ')">⛶</button>');
+  grid.appendChild(d);
+  attachZoom(d, v, null, true);   // 그리드 칸은 더블클릭=타임점프 이동
+  d.addEventListener('dblclick', e => {
+    if (e.target.closest('.big')) return;
+    camSel.value = i;
+    showTab('jump');
+    showLive(i);                   // 진입 시엔 그 카메라 라이브(고화질)를 크게 표시
+  });
+  liveConnect(v, c.path + 'sub', baseFor(c));
+});
+
+// ══════════ 크게 보기 모달 (고화질 스트림 + 확대/축소) ══════════
+let modalConn = null, mz = null;
+function openModal(i) {
+  const c = CAMS[i];
+  document.getElementById('mtitle').textContent = c.no + ' · ' + c.name + ' (고화질 라이브)';
+  document.getElementById('modal').style.display = 'flex';
+  const mv = document.getElementById('mplayer');
+  if (!mz) mz = attachZoom(document.getElementById('mwrap'), mv, document.getElementById('mzlvl'));
+  mz.reset();
+  modalConn = liveConnect(mv, c.path, baseFor(c));   // 고화질(stream1)
+}
+function closeModal() {
+  document.getElementById('modal').style.display = 'none';
+  if (modalConn) { modalConn.stop(); modalConn = null; }
+  document.getElementById('mplayer').srcObject = null;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+let curTab = 'live';
+function showTab(t, push = true) {
+  if (t === curTab) return;
+  curTab = t;
+  document.getElementById('live').style.display = (t==='live') ? '' : 'none';
+  document.getElementById('jump').style.display = (t==='jump') ? '' : 'none';
+  document.getElementById('tabLive').className = 'tab' + (t==='live' ? ' on' : '');
+  document.getElementById('tabJump').className = 'tab' + (t==='jump' ? ' on' : '');
+  if (t === 'live') {  // 라이브 그리드로 돌아가면: 재생 일시정지 + 단일 라이브 종료
+    const v = document.getElementById('player');
+    if (v && !v.paused) v.pause();
+    stopJumpLive();
+  }
+  if (t === 'jump' && !window._curStart && !jumpLiveMode) showLive(camSel.value);  // 탭으로 진입해도 기본은 라이브
+  if (push) history.pushState({ tab: t }, '', '#' + t);
+}
+history.replaceState({ tab: 'live' }, '', '#live');
+window.addEventListener('popstate', e => {
+  showTab((e.state && e.state.tab) || 'live', false);   // 마우스 뒤로가기/앞으로가기 대응
+});
+
+// ══════════ 타임점프 ══════════
+const pz = attachZoom(document.getElementById('vwrap'), document.getElementById('player'), document.getElementById('pzlvl'));
+
+// 타임점프 화면의 "라이브 미리보기" 모드 (시각 설정 전까지 실시간 표시)
+let jumpLiveConn = null, jumpLiveMode = false;
+function showLive(i) {
+  const c = CAMS[i];
+  const v = document.getElementById('player');
+  const msg = document.getElementById('msg');
+  stopJumpLive();
+  window._curStart = null;
+  v.onerror = null;
+  v.pause();
+  v.removeAttribute('src');
+  v.muted = true;                       // 라이브는 무음 (재생 전환 시 소리 켜짐)
+  jumpLiveMode = true;
+  jumpLiveConn = liveConnect(v, c.path, baseFor(c)); // 고화질 라이브
+  v.onplaying = () => { msg.className=''; msg.textContent = '🔴 실시간 라이브 — 시각을 정하고 [▶ 재생]을 누르면 그 시각의 녹화로 이동합니다'; };
+  msg.className=''; msg.textContent = '라이브 연결 중…';
+  document.getElementById('nowplay').textContent = c.no + ' ' + c.name + ' · 🔴 라이브';
+}
+function stopJumpLive() {
+  if (jumpLiveConn) { jumpLiveConn.stop(); jumpLiveConn = null; }
+  jumpLiveMode = false;
+  const v = document.getElementById('player');
+  if (v.srcObject) v.srcObject = null;
+}
+camSel.addEventListener('change', () => { if (jumpLiveMode) showLive(camSel.value); });  // 라이브 중 카메라 변경 시 즉시 전환
+
+function toggleFs() {
+  const w = document.getElementById('vwrap');
+  const msg = document.getElementById('msg');
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    w.requestFullscreen().catch(err => {
+      msg.className = 'err';
+      msg.textContent = '전체화면 전환 실패: ' + err.message;
+    });
+  }
+}
+function getStart() {
+  const p = n => String(n).padStart(2,'0');
+  return new Date(dateSel.value + 'T' + p(wh.get()) + ':' + p(wm.get()) + ':' + p(ws.get()) + '+09:00');
+}
+function fmt(dt) {
+  const p = n => String(n).padStart(2,'0');
+  return dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate())+'T'+p(dt.getHours())+':'+p(dt.getMinutes())+':'+p(dt.getSeconds())+'+09:00';
+}
+function setPickers(dt) {
+  dateSel.value = isoLocal(dt);
+  wh.set(dt.getHours()); wm.set(dt.getMinutes()); ws.set(dt.getSeconds());
+}
+function buildUrl(dt, durSec) {
+  const c = CAMS[camSel.value];
+  if (!durSec) durSec = document.getElementById('dur').value;
+  return baseFor(c) + ':9996/get?path=' + c.path + '&start=' + encodeURIComponent(fmt(dt)) + '&duration=' + durSec;
+}
+function play() {
+  retried = false;
+  const dt = getStart();
+  window._winEnd = dt.getTime() + parseInt(document.getElementById('dur').value) * 1000;
+  loadAt(dt);
+}
+function loadAt(dt) {
+  const c = CAMS[camSel.value];
+  const v = document.getElementById('player');
+  const msg = document.getElementById('msg');
+  stopJumpLive();                    // 라이브 미리보기 종료 (안 하면 라이브가 화면을 계속 차지함)
+  if (!window._winEnd) window._winEnd = dt.getTime() + parseInt(document.getElementById('dur').value) * 1000;
+  const durSec = Math.max(2, Math.round((window._winEnd - dt.getTime()) / 1000));
+  msg.className=''; msg.textContent='불러오는 중…';
+  v.src = buildUrl(dt, durSec);
+  v.playbackRate = parseFloat(document.getElementById('rate').value);
+  v.muted = false;
+  document.getElementById('nowplay').textContent = c.no + ' ' + c.name + ' · ' + fmt(dt).replace('T',' ').replace('+09:00','') + ' 부터';
+  v.onplaying = () => { msg.textContent = '재생 중'; };
+  v.onerror = () => {
+    if (!retried) { retried = true; loadAt(new Date(dt.getTime() - 1000)); return; }  // 경계 오차 보정
+    suggest(c, dt);
+  };
+  v.onended = async () => {         // 끊김 구간 자동 건너뛰기: 요청 구간이 남았으면 다음 녹화 조각으로 이어감
+    const playedSec = (isFinite(v.duration) && v.duration > 0) ? v.duration : 0;
+    const endedAt = dt.getTime() + playedSec * 1000;
+    if (window._winEnd - endedAt < 3000) { msg.textContent = '재생 완료'; return; }
+    try {
+      const r = await fetch(baseFor(c) + ':9996/list?path=' + c.path);
+      const segs = await r.json();
+      const next = segs.map(s => new Date(s.start)).filter(st => st.getTime() > endedAt + 500).sort((a,b) => a - b)[0];
+      if (next && next.getTime() < window._winEnd) {
+        const gap = Math.round((next.getTime() - endedAt) / 1000);
+        msg.textContent = '⏭ 녹화 공백 ' + gap + '초 건너뛰고 이어서 재생합니다';
+        retried = false;
+        loadAt(next);
+      } else { msg.textContent = '재생 완료'; }
+    } catch (e) { msg.textContent = '재생 완료'; }
+  };
+  window._curStart = dt;
+}
+function shift(sec) {
+  if (!window._curStart) return;
+  const nd = new Date(window._curStart.getTime() + sec*1000);
+  window._winEnd = nd.getTime() + parseInt(document.getElementById('dur').value) * 1000;
+  setPickers(nd);
+  retried = false;
+  loadAt(nd);
+}
+async function suggest(c, dt) {
+  const msg = document.getElementById('msg');
+  msg.className='err';
+  try {
+    const r = await fetch(baseFor(c) + ':9996/list?path=' + c.path);
+    const segs = await r.json();
+    if (!segs.length) { msg.textContent = '이 카메라는 아직 녹화가 없습니다.'; return; }
+    let best = null, bd = Infinity;
+    segs.forEach(s => { const st = new Date(s.start); const d0 = Math.abs(st - dt); if (d0 < bd) { bd = d0; best = st; } });
+    msg.textContent = '이 시각엔 녹화가 없습니다. 가장 가까운 녹화: ' + fmt(best).replace('T',' ').replace('+09:00','');
+  } catch(e) {
+    msg.textContent = '이 시각의 녹화를 찾을 수 없습니다. (녹화 시작 전이거나 보관기간 지남)';
+  }
+}
+function saveClip() {
+  const dt = getStart();
+  const c = CAMS[camSel.value];
+  const a = document.createElement('a');
+  a.href = buildUrl(dt);
+  a.download = c.no + '_' + fmt(dt).replace(/[:+]/g,'-') + '.mp4';
+  a.click();
+}
+</script>
+</body>
+</html>
