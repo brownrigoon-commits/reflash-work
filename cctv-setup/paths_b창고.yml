@@ -1,0 +1,56 @@
+paths:
+  # b01 - B창고_입구 전체 (C100, 192.168.0.100)
+  b01:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.100:554/stream1
+    record: yes
+  b01sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.100:554/stream2
+    sourceOnDemand: yes
+
+  # b02 - B창고 2층 컴터위1 (C110, 192.168.0.102)
+  b02:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.102:554/stream1
+    record: yes
+  b02sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.102:554/stream2
+    sourceOnDemand: yes
+
+  # b03 - B창고 1층 컴터위1 (C110, 192.168.0.103)
+  b03:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.103:554/stream1
+    record: yes
+  b03sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.103:554/stream2
+    sourceOnDemand: yes
+
+  # b04 - B창고 2층 컴터위2 (C110, 192.168.0.104)
+  b04:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.104:554/stream1
+    record: yes
+  b04sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.104:554/stream2
+    sourceOnDemand: yes
+
+  # b05 - 1층 작업다이3 (C110, 192.168.0.105)
+  b05:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.105:554/stream1
+    record: yes
+  b05sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.105:554/stream2
+    sourceOnDemand: yes
+
+  # b06 - B창고 1층 작업다이 2 (C110, 192.168.0.106)
+  b06:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.106:554/stream1
+    record: yes
+  b06sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.106:554/stream2
+    sourceOnDemand: yes
+
+  # b07 - B창고 외부1_310 (C310, 192.168.0.107) - 베란다 외부
+  b07:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.107:554/stream1
+    record: yes
+  b07sub:
+    source: rtsp://Reflashcam:rfcam2026@192.168.0.107:554/stream2
+    sourceOnDemand: yes
