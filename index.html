@@ -409,7 +409,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260724_093038'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20260901_112713'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -802,8 +802,8 @@ function lunchPublish(room){ // cloudSync에서 호출
     window._roomLunch=(room&&room.lunch)||window._roomLunch||{};
     const ds=todayStr(), hm=lunchNowMin();
     const tdy=window._roomLunch.today;
-    // 날짜가 다르면 즉시 청소. 같은 날 청소는 09:35 이후에만 — 폰 시계 오차·단축어 지연으로 발송 직전에 지워지는 사고 방지
-    if(tdy&&tdy.msg&&(tdy.d!==ds||hm>=575)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); }
+    // 날짜가 다르면 즉시 청소. 같은 날 청소는 11:00 이후에만 — 단축어가 늦게 실행되는 사례가 실제로 있어 창을 넓힘(2026-08-31)
+    if(tdy&&tdy.msg&&(tdy.d!==ds||hm>=660)){ cfetch('/lunch/today',{method:'PUT',body:JSON.stringify({d:ds})}).catch(()=>{}); } // 같은 날 청소는 11:00 이후 — 아이폰 자동화가 늦게 실행돼도 읽히도록
     if(hm>560)return;                      // 주문시간(9:20) 전이면 언제든 게시 — 이른 출근도 반영
     const cfg=window._roomLunchCfg; if(!cfg)return;
     const ov=lunchNode(ds);
