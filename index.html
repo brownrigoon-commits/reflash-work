@@ -62,6 +62,10 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 #lunchPopBg.on{display:block;}
 #lunchPop.on{display:block;animation:lunchpop .45s ease-out;}
 #lunchPop .bento{font-size:46px;line-height:1;display:inline-block;animation:lunchbounce .7s ease-in-out .45s 2;}
+#lunchPop .wx-card{margin-top:10px;background:var(--purple-light);border-radius:12px;padding:10px 12px;text-align:left;font-size:13px;line-height:1.55;color:var(--txt);}
+#lunchPop .wx-line{font-size:13.5px;margin-bottom:3px;}
+#lunchPop .wx-tip{font-size:12.5px;color:var(--purple-dark);}
+#lunchPop .cheer{margin-top:10px;font-size:15px;font-weight:800;color:var(--purple);line-height:1.45;}
 .btn.p{background:var(--purple);color:#fff;}
 .btn.y{background:var(--yellow);color:var(--purple-dark);}
 .btn.ghost{background:#fff;border:1.5px solid var(--purple);color:var(--purple);}
@@ -127,6 +131,33 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
 .tag.abs{background:#FDECEC;color:var(--red);}
 .tag.hol{background:#EEE;color:#999;}
 .tag.man{background:var(--purple-light);color:var(--purple);}
+.tag.leave{background:#E4F1FD;color:#1F6FB8;}
+/* ===== 연차 / 야근 현황판 ===== */
+.lv-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.lv-sum div{background:#fff;border-radius:14px;padding:12px 6px;text-align:center;box-shadow:0 2px 10px rgba(55,36,112,.05);}
+.lv-sum b{display:block;font-size:22px;color:var(--purple);margin-top:2px;}
+.lv-sum span{font-size:11.5px;color:var(--txt-sub);font-weight:700;}
+.lv-bar{height:7px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:6px;}
+.lv-bar i{display:block;height:100%;background:var(--purple);border-radius:4px;}
+.lv-row{padding:12px 2px;border-bottom:1px solid var(--line);}
+.lv-row:last-child{border-bottom:none;}
+.lv-grant{width:56px!important;padding:4px!important;text-align:center;font-size:14px!important;}
+.ot-hero{background:linear-gradient(135deg,var(--purple-dark),var(--purple));color:#fff;border-radius:20px;padding:20px 18px;margin-bottom:12px;position:relative;overflow:hidden;}
+.ot-hero::after{content:'🌙';position:absolute;right:14px;top:10px;font-size:44px;opacity:.35;}
+.ot-hero .lbl{font-size:13px;opacity:.85;font-weight:700;}
+.ot-hero .big{font-size:38px;font-weight:800;color:var(--yellow);margin:4px 0 2px;letter-spacing:-.5px;line-height:1.15;}
+.ot-hero .sub{font-size:13px;opacity:.85;}
+.ot-emp{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);}
+.ot-emp:last-child{border-bottom:none;}
+.ot-emp .nm{font-size:17px;font-weight:800;min-width:64px;}
+.ot-emp .hrs{font-size:20px;font-weight:800;color:var(--purple);white-space:nowrap;}
+.ot-emp .barw{flex:1;min-width:0;}
+.ot-emp .bar{height:12px;background:var(--purple-light);border-radius:6px;overflow:hidden;}
+.ot-emp .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--yellow),#FFB300);border-radius:6px;}
+.ot-emp .cnt{font-size:11.5px;color:var(--txt-sub);margin-top:4px;}
+.ot-log{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14px;}
+.ot-log:last-child{border-bottom:none;}
+.ot-log .plus{font-weight:800;color:var(--purple);font-size:15px;}
 
 .emp-row{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);cursor:pointer;}
 .emp-row:last-child{border-bottom:none;}
@@ -205,6 +236,18 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     </div>
   </div>
 
+  <!-- ============ 연차 관리 ============ -->
+  <div class="page" id="pg-leave">
+    <h2 class="sec">연차 관리</h2>
+    <div class="pick">
+      <button onclick="leaveMove(-1)">‹</button>
+      <span id="leaveLabel"></span>
+      <button onclick="leaveMove(1)">›</button>
+    </div>
+    <button class="btn y wide" id="btnLeaveAdd" onclick="openLeaveForm()">＋ 연차 · 반차 등록</button>
+    <div id="leaveBody" style="margin-top:14px;"></div>
+  </div>
+
   <!-- ============ 급여 관리 ============ -->
   <div class="page" id="pg-pay">
     <h2 class="sec">급여 관리</h2>
@@ -213,6 +256,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <span id="payLabel"></span>
       <button onclick="payMove(1)">›</button>
     </div>
+    <div id="otBoard"></div>
+    <h3 class="sub" style="margin-top:22px;">■ 급여 계산</h3>
     <div class="muted" style="margin:0 4px 12px;">근태 기록으로 결근·조퇴가 자동 집계됩니다. 셀을 수정하면 즉시 재계산됩니다. (통상시급 = 월급 ÷ 209시간)</div>
     <button class="btn ghost wide" style="margin-bottom:12px;" onclick="fillMonthNormal()">📅 이번 달 빈 근무일 모두 정상근무 처리</button>
     <div id="payBody"></div>
@@ -279,6 +324,18 @@ body.no-scroll{overflow:hidden;touch-action:none;}
         <button class="btn ghost wide" style="margin-top:8px;" onclick="testNtfy()">🔔 테스트 푸시 보내기</button>
       </div>
     </div>
+    <div class="card" id="lateCard">
+      <h3 style="font-size:15px;margin-bottom:10px;">⏰ 미출근 알림 — 대표님 폰으로</h3>
+      <div class="muted" style="margin-bottom:10px;">근무일 정해진 시각까지 출근을 누르지 않은 직원이 있으면 <b>대표님 전용 채널</b>로 한 번 알려 드립니다. 연차·오전 반차, 자동 출퇴근 직원, 출근시간이 그 뒤인 직원은 빠집니다.</div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;">
+        <input type="checkbox" id="lateOn" style="width:20px;height:20px;" checked> 미출근 알림 켜기
+      </label>
+      <label class="f">알림 시각</label><input type="time" id="lateAt" value="09:10">
+      <button class="btn p wide" style="margin-top:10px;" onclick="saveLateCfg()">알림 설정 저장</button>
+      <div class="muted" id="bossInfo" style="margin-top:12px;">클라우드 연동 후 대표님 전용 채널이 만들어집니다.</div>
+      <a class="btn y wide" id="bossOpen" style="text-decoration:none;margin-top:8px;display:block;text-align:center;" href="#">📲 대표님 폰에서 이 채널 구독하기 (ntfy 앱)</a>
+      <button class="btn ghost wide" style="margin-top:8px;" onclick="testBoss()">⏰ 대표님 채널로 테스트 보내기</button>
+    </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">📧 월말 급여대장 자동 수신 (검토용)</h3>
       <label class="f" style="margin-top:0;">받아볼 이메일 (대표님 메일)</label>
@@ -304,6 +361,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <button class="on" data-p="kiosk" onclick="go('kiosk')"><span class="ico">🕐</span>출퇴근</button>
     <button data-p="status" onclick="go('status',true)"><span class="ico">📊</span>현황</button>
     <button data-p="emp" onclick="go('emp',true)"><span class="ico">👥</span>직원관리</button>
+    <button data-p="leave" onclick="go('leave',true)"><span class="ico">🌴</span>연차</button>
     <button data-p="pay" onclick="go('pay',true)"><span class="ico">💰</span>급여</button>
     <button data-p="set" onclick="go('set',true)"><span class="ico">⚙️</span>설정</button>
   </div>
@@ -385,6 +443,30 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <button class="btn red wide" id="btnRetire" style="margin-top:10px;display:none;" onclick="retireEmp()">퇴사 처리</button>
 </div></div>
 
+<!-- 연차 등록 모달 (관리자) -->
+<div class="modal-bg" id="mdLeave"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdLeave')">‹</button>
+  <h3>연차 · 반차 등록</h3>
+  <div class="muted">등록한 날은 결근·지각·조퇴로 잡히지 않고 급여 공제도 없습니다.</div>
+  <label class="f">직원 *</label><select id="lvEmp"></select>
+  <div class="row" style="margin-top:0;">
+    <div style="flex:1;"><label class="f">시작일 *</label><input type="date" id="lvFrom"></div>
+    <div style="flex:1;"><label class="f">종료일 <span style="font-weight:400;">(하루면 비워 두기)</span></label><input type="date" id="lvTo"></div>
+  </div>
+  <label class="f">종류 *</label>
+  <select id="lvType">
+    <option value="full">연차 (하루 · 1일 차감)</option>
+    <option value="am">오전 반차 (0.5일 차감 · 지각 아님)</option>
+    <option value="pm">오후 반차 (0.5일 차감 · 조퇴 아님)</option>
+  </select>
+  <label class="f">메모 <span style="font-weight:400;">(선택)</span></label><input id="lvMemo" placeholder="예: 병원, 가족 행사" maxlength="40">
+  <div class="muted" style="margin-top:8px;">여러 날을 고르면 그 사이의 <b>근무일만</b> 등록됩니다 (휴무 요일 제외).</div>
+  <div class="row" style="margin-top:18px;">
+    <button class="btn p" style="flex:1;" onclick="saveLeave()">등록하기</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdLeave')">취소</button>
+  </div>
+</div></div>
+
 <!-- 기록 수정 모달 (관리자) -->
 <div class="modal-bg" id="mdRec"><div class="modal">
   <button class="modal-back" onclick="closeM('mdRec')">‹</button>
@@ -396,6 +478,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </div>
   <button class="btn y wide" style="margin-top:10px;" onclick="fillSched()">⏰ 정시로 채우기 (근무시간표 대로)</button>
   <button class="btn red wide" style="margin-top:8px;" onclick="recAbsent()">🚫 결근 처리</button>
+  <button class="btn ghost wide" id="btnOtClear" style="margin-top:8px;display:none;" onclick="clearOt()">🌙 야근 기록 지우기 (출퇴근 기록은 유지)</button>
   <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. [결근 처리]를 누르면 그날은 결근으로 기록됩니다(자동 출퇴근 직원도 그날 자동입력이 꺼짐). 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
   <div class="row" style="margin-top:16px;">
     <button class="btn p" style="flex:1;" onclick="saveRec()">저장</button>
@@ -409,7 +492,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20260901_112713'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261030_050359'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -473,6 +556,7 @@ function go(p,needAdmin){
   if(p==='status')renderStatus();
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
+  if(p==='leave')renderLeave();
   if(p==='set'){renderNotifyCard();applySetLock();}
   window.scrollTo(0,0);
 }
@@ -545,8 +629,13 @@ function doPunch(kind){
   else{
     if(!r.in){toast('출근 기록이 없습니다');return;}
     if(r.out){toast('이미 퇴근 처리되었습니다');return;}
-    if(toMin(hm)>toMin(e.schedule.end))hm=e.schedule.end; // 늦게 눌러도 정시 퇴근 — 야근은 관리자가 [현황→수정]에서만 입력
-    r.out=hm; toast(`${e.name}님 퇴근 완료! 수고하셨습니다 (${hm})`);
+    // 늦게 눌러도 정시 퇴근 — 급여 계산은 정시 기준 그대로.
+    // 단 퇴근시간보다 30분 이상 늦게 누르면 실제 시각을 otOut에 따로 남겨 [급여→야근 현황판]에 보이게 한다.
+    if(toMin(hm)>toMin(e.schedule.end)){
+      if(toMin(hm)-toMin(e.schedule.end)>=OT_MIN)r.otOut=hm;
+      hm=e.schedule.end;
+    }
+    r.out=hm; toast(`${e.name}님 퇴근 완료! 수고하셨습니다 (${r.otOut?r.otOut:hm})`);
   }
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
   showPunchPop(kind,punchEmpId); // 도시락 +1(출근 시) + 이름 부르는 날씨 인사말
@@ -584,12 +673,32 @@ function workedMin(e,r){
   const ov=Math.max(0,Math.min(toMin(r.out),be)-Math.max(toMin(r.in),bs));
   return Math.max(0,m-ov);
 }
+/* ── 야근: 정해진 퇴근시간 이후 근무 (실제 퇴근 누른 시각 otOut 또는 관리자가 고친 퇴근시각 기준) ── */
+const OT_MIN=30; // 퇴근시간보다 30분 이상 늦게 퇴근을 누르면 야근으로 기록
+function otMin(e,r,d){
+  if(!r||!r.in)return 0;
+  const outs=[toMin(r.out),toMin(r.otOut)].filter(x=>x!=null);
+  if(!outs.length)return 0;
+  return Math.max(0,Math.max(...outs)-toMin(e.schedule.end));
+}
+function fmtHM(min){ const h=Math.floor(min/60),m=min%60; return h?(m?`${h}시간 ${m}분`:`${h}시간`):`${m}분`; }
+/* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
+const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
+function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
+function leaveOn(ds,empId){ // 그날 등록된 연차(삭제 표식 제외) — 없으면 null
+  const it=leavesDB().items;
+  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.e===empId&&x.d===ds)return x; }
+  return null;
+}
+function leaveDays(x){ return x.t==='full'?1:0.5; }
 function dayStatus(e,d){ // {tag, label}
   const ds=fmtD(d), r=recOf(ds,e.id), today=todayStr();
   if(!isWorkday(e,d)) return r&&r.in?{t:'ok',l:'휴일근무'}:{t:'hol',l:'휴무'};
-  if(!r||!r.in){ if(ds<today)return{t:'abs',l:'결근'}; return {t:'hol',l:'-'}; }
-  const late=toMin(r.in)>toMin(e.schedule.start);
-  const early=r.out&&toMin(r.out)<toMin(e.schedule.end);
+  const lv=leaveOn(ds,e.id);
+  if(lv&&lv.t==='full')return{t:'leave',l:'연차'};
+  if(!r||!r.in){ if(lv)return{t:'leave',l:LEAVE_NM[lv.t]}; if(ds<today)return{t:'abs',l:'결근'}; return {t:'hol',l:'-'}; }
+  const late=toMin(r.in)>toMin(e.schedule.start)&&!(lv&&lv.t==='am');   // 오전 반차는 지각 아님
+  const early=r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'); // 오후 반차는 조퇴 아님
   if(late&&early)return{t:'late',l:'지각·조퇴'};
   if(late)return{t:'late',l:'지각'};
   if(early)return{t:'early',l:'조퇴'};
@@ -610,20 +719,21 @@ function monthWeeks(y,m){ // m: 0-based
 // 정직원 월 집계
 function monthAgg(e,y,m){
   const today=todayStr();
-  let absent=0, earlyCnt=0, lateCnt=0, attend=0, totalMin=0;
+  let absent=0, earlyCnt=0, lateCnt=0, attend=0, totalMin=0, leave=0;
   const absWeeks=new Set();
   const weeks=monthWeeks(y,m);
   weeks.forEach((w,wi)=>{
     for(let d=new Date(w[0]);d<=w[1];d.setDate(d.getDate()+1)){
       if(!isWorkday(e,d))continue;
-      const ds=fmtD(d), r=recOf(ds,e.id);
+      const ds=fmtD(d), r=recOf(ds,e.id), lv=leaveOn(ds,e.id);
+      if(lv){ leave+=leaveDays(lv); if(lv.t==='full')continue; } // 연차는 유급 — 결근·공제 대상 아님
       if(r&&r.in){ attend++; totalMin+=workedMin(e,r);
-        if(toMin(r.in)>toMin(e.schedule.start))lateCnt++;
-        if(r.out&&toMin(r.out)<toMin(e.schedule.end))earlyCnt++;
-      } else if(ds<today){ absent++; absWeeks.add(wi); }
+        if(toMin(r.in)>toMin(e.schedule.start)&&!(lv&&lv.t==='am'))lateCnt++;
+        if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))earlyCnt++;
+      } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }
     }
   });
-  return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size};
+  return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size,leave};
 }
 
 function visEmps(d){
@@ -640,6 +750,7 @@ function autoPunchTick(){
       if(!isWorkday(e,d))continue;
       const ds=fmtD(d);
       if(recOf(ds,e.id))continue;            // 이미 기록(수동·끔 포함) 있으면 유지
+      if(leaveOn(ds,e.id))continue;          // 연차·반차 등록일은 자동 기록하지 않음 (관리자가 필요하면 직접 입력)
       if(ds<tds){                            // 지난 근무일: 정시 출퇴근으로 채움
         DB.records[ds]=DB.records[ds]||{};
         DB.records[ds][e.id]={in:e.schedule.start,out:e.schedule.end,auto:true};
@@ -670,6 +781,7 @@ function lunchCount(){ // PC 집계 스크립트와 동일 규칙 — 실제 출
   return activeEmps().filter(e=>{
     const r=recOf(ds,e.id);
     if(r)return !!r.in;                       // 기록 있으면 그대로(결근 표식 off는 제외)
+    const lv=leaveOn(ds,e.id); if(lv&&lv.t!=='pm')return false; // 연차·오전 반차는 점심 전 부재 (PC 스크립트와 동일)
     return !!e.autoPunch&&isWorkday(e,d);     // 기록 없어도 자동출퇴근 대상자는 포함
   }).length;
 }
@@ -685,12 +797,57 @@ function lunchMsg(tpl,n){ // 문구 양식 채우기 — {n}=개수, {d}=날짜(
 const WX_LOC={lat:37.676,lon:126.747}; // 회사(고양 일산서구) 좌표
 async function fetchWx(){
   try{
-    const c=JSON.parse(localStorage.getItem('rf_wx')||'null');
-    if(c&&Date.now()-c.ts<30*60*1000){window._wx=c;return;}
-    const r=await(await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${WX_LOC.lat}&longitude=${WX_LOC.lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=Asia%2FSeoul`)).json();
-    const w={t:r.current.temperature_2m,hum:r.current.relative_humidity_2m,code:r.current.weather_code,ts:Date.now()};
-    window._wx=w; localStorage.setItem('rf_wx',JSON.stringify(w));
+    const c=JSON.parse(localStorage.getItem('rf_wx2')||'null');
+    if(c&&Date.now()-c.ts<30*60*1000&&c.day===todayStr()){window._wx=c;return;}
+    const r=await(await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${WX_LOC.lat}&longitude=${WX_LOC.lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1&timezone=Asia%2FSeoul`)).json();
+    const dl=r.daily||{};
+    const w={t:r.current.temperature_2m,hum:r.current.relative_humidity_2m,code:r.current.weather_code,
+      dcode:(dl.weather_code||[])[0],tmax:(dl.temperature_2m_max||[])[0],tmin:(dl.temperature_2m_min||[])[0],
+      pop:(dl.precipitation_probability_max||[])[0],day:todayStr(),ts:Date.now()};
+    try{ // 미세먼지 (실패해도 날씨 요약은 그대로)
+      const a=await(await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${WX_LOC.lat}&longitude=${WX_LOC.lon}&current=pm10,pm2_5&timezone=Asia%2FSeoul`)).json();
+      w.pm10=a.current.pm10; w.pm25=a.current.pm2_5;
+    }catch(e){}
+    window._wx=w; localStorage.setItem('rf_wx2',JSON.stringify(w));
   }catch(e){}
+}
+/* ── 출근 팝업용 오늘 날씨 요약 (고양 일산서구 기준) ── */
+function wxName(c){
+  if(c==null)return '';
+  if(c===0)return '맑음'; if(c<=2)return '구름 조금'; if(c===3)return '흐림';
+  if(c===45||c===48)return '안개'; if(c>=51&&c<=57)return '이슬비'; if(c>=61&&c<=67)return '비';
+  if(c>=71&&c<=77)return '눈'; if(c>=80&&c<=82)return '소나기'; if(c===85||c===86)return '눈발';
+  if(c>=95)return '천둥번개'; return '흐림';
+}
+function dustGrade(pm10,pm25){ // 환경부 기준 — 둘 중 나쁜 쪽
+  if(pm10==null&&pm25==null)return null;
+  const g10=pm10==null?0:pm10<=30?0:pm10<=80?1:pm10<=150?2:3;
+  const g25=pm25==null?0:pm25<=15?0:pm25<=35?1:pm25<=75?2:3;
+  return ['좋음','보통','나쁨','매우 나쁨'][Math.max(g10,g25)];
+}
+function wxSummary(){ // {line, tips[]} — 날씨를 못 받아왔으면 null
+  const w=window._wx; if(!w||w.t==null)return null;
+  const r=x=>Math.round(x);
+  let line=`오늘 일산은 <b>${wxName(w.dcode!=null?w.dcode:w.code)}</b>, 지금 <b>${r(w.t)}°</b>`;
+  if(w.tmin!=null&&w.tmax!=null)line+=` (최저 ${r(w.tmin)}° / 최고 ${r(w.tmax)}°)`;
+  const tips=[];
+  if(w.pop!=null)tips.push(w.pop>=50?`☔ 비 올 확률 ${w.pop}% — 우산 꼭 챙기세요!`:w.pop>=20?`🌂 비 올 확률 ${w.pop}% — 작은 우산 하나 있으면 든든해요`:`🌤 비 소식 없어요 (${w.pop}%)`);
+  const dg=dustGrade(w.pm10,w.pm25);
+  if(dg)tips.push(dg==='나쁨'||dg==='매우 나쁨'?`😷 미세먼지 ${dg} — 마스크 챙기세요`:`🍃 미세먼지 ${dg}`);
+  if(w.tmax!=null&&w.tmin!=null&&w.tmax-w.tmin>=10)tips.push('🧥 일교차가 커요 — 겉옷 하나 챙기세요');
+  if(w.tmax!=null&&w.tmax>=31)tips.push('🥤 많이 더워요 — 물 자주 드세요');
+  if(w.tmin!=null&&w.tmin<=-5)tips.push('🧤 강추위 — 따뜻하게 입으세요');
+  return {line,tips};
+}
+const CHEER=['오늘도 우리 팀 최고! 힘차게 가 볼까요? 💪','당신 덕분에 리플래시가 빛나요! 오늘도 화이팅! ✨',
+  '좋은 일만 가득한 하루 되세요! 파이팅! 🙌','오늘 하루도 웃으면서 신나게! 🎉','멋진 하루의 시작! 오늘도 응원합니다! 📣',
+  '할 수 있다! 오늘도 즐겁게 달려봐요! 🏃','오늘도 반짝반짝 빛나는 하루 되세요! 🌟'];
+function cheerFor(){ // 요일 맞춤 응원 + 날짜 기준 순환
+  const g=new Date().getDay();
+  if(g===1)return '새로운 한 주의 시작! 이번 주도 힘차게 화이팅! 💪';
+  if(g===5)return '즐거운 금요일! 조금만 더 힘내면 주말이에요! 🎉';
+  const doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0).getTime())/864e5);
+  return CHEER[doy%CHEER.length];
 }
 const GREET={
   rain:{emo:'☔',
@@ -775,7 +932,10 @@ function showPunchPop(kind,empId){
   let el=document.getElementById('lunchPop');
   if(!el){ el=document.createElement('div'); el.id='lunchPop'; document.body.appendChild(el); }
   const dm=(kind==='out')?dinnerPick():null;
+  const ws=(kind==='in')?wxSummary():null;
   const greet=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--txt-sub);line-height:1.6;"><b style="color:var(--purple-dark);">${nick}</b>, ${gr.msg}</div>`
+    +(ws?`<div class="wx-card"><div class="wx-line">${gr.emo} ${ws.line}</div>${ws.tips.map(t=>`<div class="wx-tip">${t}</div>`).join('')}</div>`:'')
+    +(kind==='in'?`<div class="cheer">${cheerFor()}</div>`:'')
     +(dm?`<div style="margin-top:8px;font-size:13px;background:var(--yellow-soft);border-radius:10px;padding:8px 12px;">🍽️ 오늘 저녁엔 <b style="color:var(--purple-dark);">${dm}</b> 어때요?</div>`:'')
     +`<button class="btn p wide" style="margin-top:14px;" onclick="closePunchPop()">확인</button>`;
   if(n!=null){
@@ -929,7 +1089,7 @@ function renderStatus(){
     visEmps(ds).forEach(e=>{
       const r=recOf(ds,e.id), st=dayStatus(e,new Date(stDate));
       const wm=workedMin(e,r);
-      h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${r&&r.in?r.in:'-'}</td><td>${r&&r.out?r.out:'-'}</td>
+      h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${r&&r.in?r.in:'-'}</td><td>${r&&r.out?r.out:'-'}${r&&r.otOut?`<br><span class="tag man">🌙 ${r.otOut}</span>`:''}</td>
         <td>${wm?Math.floor(wm/60)+'h '+(wm%60)+'m':'-'}</td>
         <td><span class="tag ${st.t}">${st.l}</span>${r&&r.auto?' <span class="tag man">자동</span>':''}${r&&r.manual?' <span class="tag man">수정</span>':''}</td>
         <td>${canManage()?`<button class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:8px;" onclick="openRec('${e.id}','${ds}')">수정</button>`:''}</td></tr>`;
@@ -949,7 +1109,7 @@ function renderStatus(){
       for(let i=0;i<7;i++){
         const d=new Date(mon);d.setDate(mon.getDate()+i);
         const r=recOf(fmtD(d),e.id), st=dayStatus(e,d);
-        if(r&&r.in)h+=`<td style="font-size:10.5px;line-height:1.5;">${r.in}<br>${r.out||'…'}</td>`;
+        if(r&&r.in)h+=`<td style="font-size:10.5px;line-height:1.5;">${r.in}<br>${r.otOut||r.out||'…'}${r.otOut?'🌙':''}</td>`;
         else h+=`<td><span class="tag ${st.t}" style="font-size:10px;">${st.l==='-'?'·':st.l}</span></td>`;
       }
       h+='</tr>';
@@ -959,13 +1119,14 @@ function renderStatus(){
   else{
     const y=stDate.getFullYear(),m=stDate.getMonth();
     lb.textContent=`${y}년 ${m+1}월`;
-    let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>총근로</th></tr>';
+    let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>연차</th><th>총근로</th></tr>';
     visEmps().forEach(e=>{
       const a=monthAgg(e,y,m);
       h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${a.attend}일</td>
         <td>${a.lateCnt?`<span class="tag late">${a.lateCnt}</span>`:'-'}</td>
         <td>${a.earlyCnt?`<span class="tag early">${a.earlyCnt}</span>`:'-'}</td>
         <td>${a.absent?`<span class="tag abs">${a.absent}</span>`:'-'}</td>
+        <td>${a.leave?`<span class="tag leave">${a.leave}</span>`:'-'}</td>
         <td>${Math.floor(a.totalMin/60)}h</td></tr>`;
     });
     body.innerHTML=h+'</table></div><div class="muted" style="margin-top:10px;">결근은 지난 날짜 기준 자동 판정입니다. 급여 탭에서 수정할 수 있어요.</div></div>';
@@ -981,9 +1142,12 @@ function openRec(id,ds){
   recEmpId=id; recDate=ds;
   const r=recOf(ds,id)||{};
   document.getElementById('recTitle').textContent=`${emp(id).name} · ${ds}`;
-  document.getElementById('recSub').textContent='출퇴근 시각을 직접 입력합니다.';
+  document.getElementById('recSub').innerHTML='출퇴근 시각을 직접 입력합니다.'
+    +(r.otOut?`<br>🌙 실제 퇴근을 누른 시각: <b>${r.otOut}</b> (야근 현황판에 표시 중)`:'')
+    +(leaveOn(ds,id)?`<br>🌴 이날은 <b>${LEAVE_NM[leaveOn(ds,id).t]}</b> 등록일입니다`:'');
   document.getElementById('recIn').value=r.in||'';
   document.getElementById('recOut').value=r.out||'';
+  document.getElementById('btnOtClear').style.display=r.otOut?'block':'none';
   openM('mdRec');
 }
 function fillSched(){
@@ -1011,8 +1175,22 @@ function saveRec(){
     // 빈 값 저장 = 결근 처리. 삭제 대신 표식을 남겨 다른 기기와 동기화 시 기록이 되살아나지 않게 함
     DB.records[recDate][recEmpId]={off:true,manual:true};
   }
-  else DB.records[recDate][recEmpId]={in:i||null,out:o||null,manual:true};
-  save(); queueRec(recDate,recEmpId); closeM('mdRec'); renderStatus(); toast('저장되었습니다');
+  else{
+    const prev=recOf(recDate,recEmpId)||{}, nr={in:i||null,out:o||null,manual:true};
+    // 실제 야근 시각(otOut)은 관리자가 [야근 기록 지우기]를 누르기 전까지 유지 — 그냥 저장만 해도 사라지지 않게
+    if(prev.otOut&&o&&toMin(prev.otOut)>toMin(o))nr.otOut=prev.otOut;
+    DB.records[recDate][recEmpId]=nr;
+  }
+  save(); queueRec(recDate,recEmpId); closeM('mdRec'); recRerender(); toast('저장되었습니다');
+}
+function clearOt(){
+  const r=recOf(recDate,recEmpId); if(!r||!r.otOut)return;
+  if(!confirm(`${emp(recEmpId).name}님 ${recDate} 야근 기록(${r.otOut} 퇴근)을 지울까요?\n출퇴근 기록은 그대로 둡니다.`))return;
+  delete r.otOut; r.manual=true;
+  save(); queueRec(recDate,recEmpId); closeM('mdRec'); recRerender(); toast('야근 기록을 지웠습니다');
+}
+function recRerender(){
+  if(document.getElementById('pg-pay').classList.contains('on'))renderPay(); else renderStatus();
 }
 
 /* ================== 직원 관리 ================== */
@@ -1240,6 +1418,154 @@ function renderPay(){
     <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:10px;border-top:1px solid rgba(255,255,255,.25);padding-top:10px;"><span>이달 총인건비</span><span style="color:var(--yellow);">${comma(sumNet+sumFnet+sumD)}원</span></div>
   </div>`;
   document.getElementById('payBody').innerHTML=h;
+  document.getElementById('otBoard').innerHTML=renderOtBoard(y,m);
+}
+
+/* ================== 연차 관리 ==================
+   발생 일수: 근로기준법 기준 회계연도(1~12월) 자동 추정 → 관리자가 숫자를 눌러 고칠 수 있음(grants에 저장)
+   사용: 등록한 연차·반차 합계. 삭제는 표식(del)으로 남겨 다른 기기에서 되살아나지 않게 함 */
+let leaveYear=new Date().getFullYear();
+function leaveMove(d){ leaveYear+=d; renderLeave(); }
+function legalLeave(e,Y){
+  if(e.type!=='regular'||!e.joinDate)return 0;           // 3.3%·일용직은 기본 0 (필요하면 직접 입력)
+  const j=new Date(e.joinDate+'T00:00:00'), jan1=new Date(Y,0,1), dec31=new Date(Y,11,31);
+  if(j>dec31)return 0;
+  const monthsDone=(from,until)=>{ let k=0; while(new Date(from.getFullYear(),from.getMonth()+k+1,from.getDate())<=until)k++; return k; };
+  if(j>=jan1)return Math.min(11,monthsDone(j,dec31));    // 올해 입사: 1개월 개근마다 1일 (최대 11일)
+  let yrs=Y-j.getFullYear(); if(new Date(Y,j.getMonth(),j.getDate())>jan1)yrs--;
+  if(yrs<1){                                              // 작년 입사: 비례 연차 + 남은 월차
+    const prevEnd=new Date(Y-1,11,31);
+    const prop=15*((prevEnd-j)/864e5+1)/365;
+    const left=Math.max(0,11-monthsDone(j,prevEnd));      // 입사 1년이 되기 전 올해 생기는 월차
+    return Math.round((prop+left)*2)/2;
+  }
+  return Math.min(25,15+Math.floor((yrs-1)/2));           // 1년 이상: 15일 + 2년마다 1일 (최대 25일)
+}
+function leaveGrant(e,Y){ const g=(leavesDB().grants[Y]||{})[e.id]; return g!=null?g:legalLeave(e,Y); }
+function leaveItemsOf(Y,empId){
+  return Object.entries(leavesDB().items).filter(([id,x])=>x&&!x.del&&String(x.d).slice(0,4)===String(Y)&&(!empId||x.e===empId))
+    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?1:-1);
+}
+function leaveUsed(e,Y){ return leaveItemsOf(Y,e.id).reduce((s,x)=>s+leaveDays(x),0); }
+function leaveEmps(Y){ return DB.employees.filter(e=>e.joinDate<=`${Y}-12-31`&&(!e.leaveDate||e.leaveDate>=`${Y}-01-01`)); }
+function renderLeave(){
+  const Y=leaveYear, can=canManage();
+  document.getElementById('leaveLabel').textContent=`${Y}년 연차`;
+  document.getElementById('btnLeaveAdd').style.display=can?'':'none';
+  const emps=leaveEmps(Y);
+  let tg=0,tu=0;
+  const rows=emps.map(e=>{ const g=leaveGrant(e,Y),u=leaveUsed(e,Y); tg+=g; tu+=u; return {e,g,u,auto:(leavesDB().grants[Y]||{})[e.id]==null}; });
+  let h=`<div class="lv-sum"><div><span>총 발생</span><b>${tg}일</b></div><div><span>사용</span><b>${tu}일</b></div><div><span>잔여</span><b style="color:${tg-tu<0?'var(--red)':'var(--purple)'};">${tg-tu}일</b></div></div>`;
+  h+='<div class="card"><div style="font-weight:800;margin-bottom:2px;">직원별 연차 현황</div>';
+  if(!rows.length)h+='<div class="muted">이 해에 재직한 직원이 없습니다.</div>';
+  rows.forEach(({e,g,u,auto})=>{
+    const left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;
+    const tb=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
+    h+=`<div class="lv-row"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="font-weight:800;font-size:15.5px;">${e.name} ${tb}</div>
+      <div style="font-size:13px;white-space:nowrap;">발생 ${can?`<input class="lv-grant" inputmode="decimal" value="${g}" title="눌러서 고치기" onchange="setGrant('${e.id}',this.value)">`:`<b>${g}</b>`}일${auto?'<span class="muted">(자동)</span>':''}</div></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${u}일</b></span><span>잔여 <b style="font-size:16px;color:${left<0?'var(--red)':'var(--purple)'};">${left}일</b></span></div>
+      <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div></div>`;
+  });
+  h+=`<div class="muted" style="margin-top:10px;">발생 일수는 근로기준법 기준(회계연도 1~12월)으로 자동 계산한 <b>추정치</b>입니다. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
+  const items=leaveItemsOf(Y);
+  h+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
+  if(!items.length)h+='<div class="muted">아직 등록된 연차가 없습니다. 위의 [＋ 연차 · 반차 등록]을 눌러 추가하세요.</div>';
+  items.forEach(x=>{
+    const e=emp(x.e); if(!e)return;
+    const d=new Date(x.d+'T00:00:00');
+    h+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b> ${e.name} <span class="tag leave">${LEAVE_NM[x.t]}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${String(x.memo).replace(/</g,'&lt;')}</div>`:''}</div>
+      ${can?`<button class="btn red" style="padding:5px 10px;font-size:12px;border-radius:8px;" onclick="delLeave('${x.id}')">삭제</button>`:''}</div>`;
+  });
+  document.getElementById('leaveBody').innerHTML=h+'</div>';
+}
+function setGrant(empId,v){
+  if(!canManage())return;
+  const Y=String(leaveYear), L=leavesDB(), s=String(v).trim();
+  L.grants[Y]=L.grants[Y]||{};
+  if(s===''){ delete L.grants[Y][empId]; leavePut(`/grants/${Y}/${empId}`,null); }
+  else{ const n=Math.round(parseFloat(s)*2)/2; if(isNaN(n)||n<0){toast('숫자로 입력해 주세요');renderLeave();return;} L.grants[Y][empId]=n; leavePut(`/grants/${Y}/${empId}`,n); }
+  save(); renderLeave(); toast('발생 일수를 저장했습니다');
+}
+function openLeaveForm(){
+  if(!canManage()){toast('관리자 기기에서만 등록할 수 있습니다');return;}
+  const sel=document.getElementById('lvEmp');
+  sel.innerHTML=activeEmps().map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  document.getElementById('lvFrom').value=todayStr(); document.getElementById('lvTo').value='';
+  document.getElementById('lvType').value='full'; document.getElementById('lvMemo').value='';
+  openM('mdLeave');
+}
+function saveLeave(){
+  const eid=document.getElementById('lvEmp').value, e=emp(eid);
+  const from=document.getElementById('lvFrom').value, to=document.getElementById('lvTo').value||from;
+  const t=document.getElementById('lvType').value, memo=document.getElementById('lvMemo').value.trim();
+  if(!e||!from){toast('직원과 날짜를 골라 주세요');return;}
+  if(to<from){toast('종료일이 시작일보다 빠릅니다');return;}
+  if(t!=='full'&&to!==from){toast('반차는 하루씩 등록해 주세요');return;}
+  const L=leavesDB(), add={}, skip=[];
+  for(let d=new Date(from+'T00:00:00');fmtD(d)<=to;d.setDate(d.getDate()+1)){
+    const ds=fmtD(d);
+    if(!isWorkday(e,d)){ if(from===to)skip.push(ds+'(휴무일)'); continue; }
+    if(leaveOn(ds,eid)){ skip.push(ds+'(이미 등록)'); continue; }
+    const id='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    add[id]={e:eid,d:ds,t,memo,ts:Date.now()};
+  }
+  const n=Object.keys(add).length;
+  if(!n){toast(skip.length?'등록할 수 있는 근무일이 없습니다: '+skip.join(', '):'등록할 근무일이 없습니다');return;}
+  Object.assign(L.items,add); save();
+  if(cloudOn())cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)}).catch(()=>{});
+  closeM('mdLeave'); leaveYear=+from.slice(0,4); renderLeave();
+  toast(`${e.name}님 ${LEAVE_NM[t]} ${n}건 등록`+(skip.length?` (제외 ${skip.length}건)`:''));
+}
+function delLeave(id){
+  if(!canManage())return;
+  const x=leavesDB().items[id]; if(!x)return;
+  if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]}을(를) 삭제할까요?`))return;
+  x.del=true; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave(); toast('삭제했습니다');
+}
+function leavePut(path,val){ if(cloudOn())cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)}).catch(()=>{}); }
+// 클라우드 병합: 클라우드 우선, 이 기기에만 있는 항목·삭제 표식은 올림
+function leaveMergeCloud(cl){
+  const L=leavesDB(), ci=(cl&&cl.items)||{}, cg=(cl&&cl.grants)||{}, upI={}, upG={};
+  Object.entries(L.items).forEach(([id,x])=>{ const c=ci[id]; if(!c||(x.del&&!c.del))upI[id]=x; });
+  L.items={...L.items,...ci,...upI};
+  Object.entries(L.grants).forEach(([y,m])=>Object.entries(m||{}).forEach(([id,v])=>{ if(!(cg[y]&&cg[y][id]!=null))(upG[y]=upG[y]||{})[id]=v; }));
+  const g=JSON.parse(JSON.stringify(cg)); Object.entries(upG).forEach(([y,m])=>{ g[y]={...(g[y]||{}),...m}; });
+  L.grants=g;
+  if(cloudCfg().role!=='admin')return;                    // 올리기는 관리자 기기만
+  if(Object.keys(upI).length)cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(upI)}).catch(()=>{});
+  Object.entries(upG).forEach(([y,m])=>cfetch('/leaves/grants/'+y,{method:'PATCH',body:JSON.stringify(m)}).catch(()=>{}));
+}
+
+/* ================== 야근 현황판 (급여 탭 맨 위) ================== */
+function renderOtBoard(y,m){
+  const last=new Date(y,m+1,0).getDate(), logs=[], per={};
+  DB.employees.forEach(e=>{
+    for(let dd=1;dd<=last;dd++){
+      const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
+      if(!r||!r.in)continue;
+      if(!isWorkday(e,d)){ const wm=workedMin(e,{in:r.in,out:r.otOut||r.out}); if(wm>0)logs.push({e,ds,d,min:wm,out:r.otOut||r.out,hol:true}); continue; }
+      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:r.otOut||r.out});
+    }
+  });
+  logs.forEach(l=>{ const p=per[l.e.id]=per[l.e.id]||{e:l.e,min:0,cnt:0,last:''}; p.min+=l.min; p.cnt++; if(l.ds>p.last)p.last=l.ds; });
+  const tot=logs.reduce((s,l)=>s+l.min,0), list=Object.values(per).sort((a,b)=>b.min-a.min), mx=list.length?list[0].min:1;
+  let h=`<div class="ot-hero"><div class="lbl">🌙 ${m+1}월 야근 현황판</div>
+    <div class="big">${tot?fmtHM(tot):'야근 없음'}</div>
+    <div class="sub">${tot?`${list.length}명 · ${logs.length}회 · 1인 평균 ${fmtHM(Math.round(tot/list.length))}`:'이번 달은 정시 퇴근! 👏'}</div></div>`;
+  if(list.length){
+    h+='<div class="card"><div style="font-weight:800;margin-bottom:2px;">직원별 야근 시간</div>';
+    list.forEach(p=>{ h+=`<div class="ot-emp"><div class="nm">${p.e.name}</div><div class="barw"><div class="bar"><i style="width:${Math.max(6,Math.round(p.min/mx*100))}%;"></i></div>
+      <div class="cnt">${p.cnt}회 · 마지막 ${p.last.slice(5).replace('-','.')}</div></div><div class="hrs">${fmtHM(p.min)}</div></div>`; });
+    h+='</div><div class="card"><div style="font-weight:800;margin-bottom:2px;">야근 기록</div>';
+    logs.sort((a,b)=>a.ds<b.ds?1:a.ds>b.ds?-1:b.min-a.min).forEach(l=>{
+      h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}><div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${l.e.name}
+        <span class="muted">${l.hol?'휴일근무':'퇴근'} ${l.out||''}</span></div><div class="plus">+${fmtHM(l.min)}</div></div>`;
+    });
+    h+='</div>';
+  }
+  h+=`<div class="muted" style="margin:0 4px 6px;">퇴근시간보다 ${OT_MIN}분 이상 늦게 퇴근을 누르면 자동으로 잡힙니다. 급여는 정시 기준 그대로이며, 기록을 누르면 고치거나 지울 수 있어요.</div>`;
+  return h;
 }
 
 /* ================== 주차별 상세 (엑셀 대장용) ================== */
@@ -1251,8 +1577,10 @@ function weekDetail(e,y,m){ // 최대 5주로 병합
     out[slot]=out[slot]||{abs:0,early:0,att:0,sched:0};
     for(let d=new Date(w[0]);d<=w[1];d.setDate(d.getDate()+1)){
       if(!isWorkday(e,d))continue; out[slot].sched++;
-      const r=recOf(fmtD(d),e.id);
-      if(r&&r.in){out[slot].att++; if(r.out&&toMin(r.out)<toMin(e.schedule.end))out[slot].early++;}
+      const r=recOf(fmtD(d),e.id), lv=leaveOn(fmtD(d),e.id);
+      if(lv&&lv.t==='full'){out[slot].att++;continue;} // 연차일은 출근으로 간주 (유급)
+      if(r&&r.in){out[slot].att++; if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))out[slot].early++;}
+      else if(lv)out[slot].att++;
       else if(fmtD(d)<today)out[slot].abs++;
     }
   });
@@ -1613,6 +1941,7 @@ async function cloudSync(){
       DB.records=cr;
       if(localOnly>0){ try{ await cfetch('/recs',{method:'PUT',body:JSON.stringify(cr)}); }catch(e){} }
     }
+    leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
       DB.employees=Object.entries(room.emps).map(([id,e])=>{
@@ -1652,9 +1981,15 @@ async function cloudSync(){
       notifyCache={recips,ntfy:'rf-'+Math.random().toString(36).slice(2,12)};
       cfetch('/notify',{method:'PUT',body:JSON.stringify(notifyCache)}).catch(()=>{});
     }
+    // 대표님 전용 푸시 채널(미출근 알림용) — 직원들이 구독한 출퇴근 채널과 따로 둔다
+    if(cloudCfg().role==='admin'&&isOwnerDev()&&notifyCache&&!notifyCache.boss){
+      notifyCache.boss='rfb-'+Math.random().toString(36).slice(2,12);
+      cfetch('/notify',{method:'PATCH',body:JSON.stringify({boss:notifyCache.boss})}).catch(()=>{});
+    }
     handleEvents(room.events||null);
     window._roomLunchToday=(room&&room.lunch&&room.lunch[todayStr()])||null;
     lunchPublish(room);
+    lateCheck(room);
     DB.settings.lastSync=new Date().toLocaleTimeString('ko-KR');
     localStorage.setItem(LS,JSON.stringify(DB));
     renderCloudStatus();
@@ -1664,6 +1999,7 @@ async function cloudSync(){
       if(document.getElementById('pg-status').classList.contains('on'))renderStatus();
       if(document.getElementById('pg-emp').classList.contains('on'))renderEmpList();
       if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
+      if(document.getElementById('pg-leave').classList.contains('on'))renderLeave();
     }
     if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
@@ -1688,6 +2024,62 @@ async function sendNtfy(msg){ // 폰 푸시 발송 (앱 꺼져 있어도 수신)
       click:location.origin+location.pathname })});
     return true;
   }catch(e){ return false; }
+}
+/* ── 미출근 알림: 정해진 시각(기본 09:10)까지 출근을 안 누른 직원을 대표님 폰으로 1회 알림 ──
+   주 경로는 회사 PC의 출근확인_알림.py(평일 09:10), 앱은 보조 경로(관리자 기기가 열려 있을 때).
+   두 경로 모두 /alerts/late/<날짜>를 먼저 확인하고 쓰므로 하루 한 번만 나간다.
+   대상 규칙(PC 스크립트와 동일): 재직·오늘 근무일·출근시간이 알림 시각 이전·자동출퇴근 아님·
+   오늘 기록 없음(결근 처리 표식 off도 제외)·연차/오전 반차 아님 */
+function lateCfg(){ const n=notifyCache||{}; return {on:n.lateOn!==false,at:n.lateAt||'09:10',boss:n.boss||''}; }
+function lateMissing(){
+  const ds=todayStr(), d=new Date(), at=toMin(lateCfg().at);
+  return activeEmps().filter(e=>{
+    if(!isWorkday(e,d)||e.autoPunch)return false;
+    if(toMin(e.schedule.start)>at)return false;
+    if(recOf(ds,e.id))return false;
+    const lv=leaveOn(ds,e.id); if(lv&&lv.t!=='pm')return false;
+    return true;
+  });
+}
+async function sendBoss(msg,title){ // 대표님 전용 채널로 푸시
+  const b=lateCfg().boss; if(!b)return false;
+  try{
+    await fetch('https://ntfy.sh',{method:'POST',body:JSON.stringify({topic:b,title:title||'리플래시 work',message:msg,tags:['alarm_clock'],priority:5,click:location.origin+location.pathname})});
+    return true;
+  }catch(e){ return false; }
+}
+function lateCheck(room){
+  try{
+    const c=cloudCfg(); if(!c||c.role!=='admin')return;
+    const cfg=lateCfg(); if(!cfg.on||!cfg.boss)return;
+    const hm=lunchNowMin(), at=toMin(cfg.at);
+    if(hm<at||hm>=12*60)return;                            // 알림 시각 ~ 정오 사이에만
+    const ds=todayStr();
+    if(room&&room.alerts&&room.alerts.late&&room.alerts.late[ds])return; // 오늘 이미 보냄(PC 또는 다른 기기)
+    if(window._lateSent===ds)return;
+    const miss=lateMissing();
+    window._lateSent=ds;
+    cfetch('/alerts/late/'+ds,{method:'PUT',body:JSON.stringify({ts:Date.now(),by:'app',n:miss.map(e=>e.name)})}).catch(()=>{});
+    if(!miss.length)return;                                // 모두 출근 — 알림 없음
+    const anyIn=activeEmps().some(e=>{ const r=recOf(ds,e.id); return r&&r.in; });
+    const msg=`${cfg.at}까지 출근을 누르지 않은 직원 ${miss.length}명: ${miss.map(e=>e.name).join(', ')}`
+      +(anyIn?'':'\n(아직 아무도 출근하지 않았어요 — 오늘이 공휴일·휴무일이면 무시하세요)');
+    sendBoss(msg,'⏰ 미출근 알림');
+    if(isOwnerDev()){ toast('⏰ '+msg); try{ if(window.Notification&&Notification.permission==='granted')new Notification('미출근 알림',{body:msg,icon:'logo_round.png',tag:'late'+ds}); }catch(e){} }
+  }catch(e){}
+}
+async function saveLateCfg(){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
+  if(!cloudOn()){toast('먼저 클라우드 연동을 켜 주세요');return;}
+  const on=document.getElementById('lateOn').checked, at=document.getElementById('lateAt').value||'09:10';
+  notifyCache={...(notifyCache||{}),lateOn:on,lateAt:at};
+  try{ await cfetch('/notify',{method:'PATCH',body:JSON.stringify({lateOn:on,lateAt:at})}); toast(on?`매 근무일 ${at}에 미출근 직원을 알려드립니다`:'미출근 알림을 껐습니다'); }
+  catch(e){ toast('저장 실패 — 인터넷 연결을 확인해 주세요'); }
+  renderNotifyCard();
+}
+async function testBoss(){
+  const ok=await sendBoss('테스트 알림입니다. 이 알림이 대표님 폰에 뜨면 미출근 알림 준비 완료!','⏰ 미출근 알림 테스트');
+  toast(ok?'테스트 푸시를 보냈습니다 — 폰 알림을 확인하세요':'발송 실패: 클라우드 연동 후 잠시 뒤 다시 시도해 주세요');
 }
 function shouldNotify(ev){
   const c=cloudCfg(); if(!c)return false;
@@ -1750,13 +2142,25 @@ function renderNotifyCard(){
   if(openBtn&&notifyCache&&notifyCache.ntfy)openBtn.href='https://ntfy.sh/'+notifyCache.ntfy;
   if(notifyCache&&notifyCache.ntfy)
     info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${notifyCache.ntfy}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
+  renderLateCard();
+}
+function renderLateCard(){
+  const lc=lateCfg(), on=document.getElementById('lateOn'); if(!on)return;
+  if(document.activeElement!==on&&document.activeElement!==document.getElementById('lateAt')){
+    on.checked=lc.on; document.getElementById('lateAt').value=lc.at;
+  }
+  const bi=document.getElementById('bossInfo'), bo=document.getElementById('bossOpen');
+  if(lc.boss){
+    bi.innerHTML=`대표님 전용 채널: <b>${lc.boss}</b><br>대표님 폰의 ntfy 앱에서 이 채널을 한 번 구독해 두세요. (직원들에게는 알려 주지 마세요)`;
+    bo.href='https://ntfy.sh/'+lc.boss; bo.style.display='block';
+  }else{ bi.textContent='클라우드 연동 후 대표님 전용 채널이 만들어집니다.'; bo.style.display='none'; }
 }
 async function saveNotify(){
   if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
   if(!cloudOn()){toast('먼저 클라우드 연동을 켜 주세요');return;}
   const recips={};
   document.querySelectorAll('#notifyList input[type=checkbox]').forEach(cb=>{recips[cb.dataset.nid]=cb.checked;});
-  notifyCache={recips,ntfy:(notifyCache&&notifyCache.ntfy)||'rf-'+Math.random().toString(36).slice(2,12)};
+  notifyCache={...(notifyCache||{}),recips,ntfy:(notifyCache&&notifyCache.ntfy)||'rf-'+Math.random().toString(36).slice(2,12)}; // 미출근 알림 설정(late*·boss)은 보존
   try{ await cfetch('/notify',{method:'PUT',body:JSON.stringify(notifyCache)}); toast('알림 수신자가 저장되었습니다'); }
   catch(e){ toast('저장 실패 — 인터넷 연결을 확인해 주세요'); }
 }
