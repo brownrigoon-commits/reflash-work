@@ -492,7 +492,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261030_052915'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261031_074238'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1429,14 +1429,16 @@ function leaveMove(d){ leaveYear+=d; renderLeave(); }
 function legalLeave(e,Y){
   if(e.type!=='regular'||!e.joinDate)return 0;           // 3.3%·일용직은 기본 0 (필요하면 직접 입력)
   const j=new Date(e.joinDate+'T00:00:00'), jan1=new Date(Y,0,1), dec31=new Date(Y,11,31);
-  if(j>dec31)return 0;
-  const monthsDone=(from,until)=>{ let k=0; while(new Date(from.getFullYear(),from.getMonth()+k+1,from.getDate())<=until)k++; return k; };
-  if(j>=jan1)return Math.min(11,monthsDone(j,dec31));    // 올해 입사: 1개월 개근마다 1일 (최대 11일)
+  const t=new Date(); t.setHours(0,0,0,0);
+  const until=(Y===t.getFullYear())?t:dec31;             // 올해는 오늘까지 생긴 것만 (월차는 한 달을 채운 다음 날 생김)
+  if(j>until)return 0;
+  const monthsDone=(from,to)=>{ let k=0; while(k<11&&new Date(from.getFullYear(),from.getMonth()+k+1,from.getDate())<=to)k++; return k; };
+  if(j>=jan1)return monthsDone(j,until);                 // 올해 입사: 1개월 개근마다 1일 (최대 11일)
   let yrs=Y-j.getFullYear(); if(new Date(Y,j.getMonth(),j.getDate())>jan1)yrs--;
   if(yrs<1){                                              // 작년 입사: 비례 연차 + 남은 월차
     const prevEnd=new Date(Y-1,11,31);
     const prop=15*((prevEnd-j)/864e5+1)/365;
-    const left=Math.max(0,11-monthsDone(j,prevEnd));      // 입사 1년이 되기 전 올해 생기는 월차
+    const left=monthsDone(j,until)-monthsDone(j,prevEnd); // 입사 1년이 되기 전 올해(오늘까지) 생긴 월차
     return Math.round((prop+left)*2)/2;
   }
   return Math.min(25,15+Math.floor((yrs-1)/2));           // 1년 이상: 15일 + 2년마다 1일 (최대 25일)
@@ -1467,7 +1469,7 @@ function renderLeave(){
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${u}일</b></span><span>잔여 <b style="font-size:16px;color:${left<0?'var(--red)':'var(--purple)'};">${left}일</b></span></div>
       <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div></div>`;
   });
-  h+=`<div class="muted" style="margin-top:10px;">발생 일수는 근로기준법 기준(회계연도 1~12월)으로 자동 계산한 <b>추정치</b>입니다. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
+  h+=`<div class="muted" style="margin-top:10px;">발생 일수는 근로기준법 기준으로 <b>오늘까지 생긴 날수</b>를 자동 계산한 추정치입니다(회계연도 1~12월 기준). 입사 첫해에는 한 달을 개근할 때마다 그다음 날 1일씩 생기고(최대 11일), 결근한 달은 생기지 않으니 숫자를 직접 줄여 주세요. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
   const items=leaveItemsOf(Y);
   h+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
   if(!items.length)h+='<div class="muted">아직 등록된 연차가 없습니다. 위의 [＋ 연차 · 반차 등록]을 눌러 추가하세요.</div>';
