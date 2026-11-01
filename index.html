@@ -105,7 +105,7 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 @media (prefers-reduced-motion:reduce){.wxi *{animation:none!important;}}
 /* 퇴근 팝업 — 오늘 저녁 추천 메뉴 사진 */
 .dn-card{margin-top:12px;border-radius:16px;overflow:hidden;background:#FFF6E0;text-align:left;box-shadow:0 4px 14px rgba(70,45,10,.14);}
-.dn-photo{position:relative;height:0;padding-top:66%;background:#F6E7C8;}
+.dn-photo{display:block;position:relative;height:0;padding-top:60%;background:#F6E7C8;color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;}
 .dn-photo img{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;object-fit:cover;display:block;}
 .dn-emo{display:none;position:absolute;top:0;left:0;right:0;bottom:0;align-items:center;justify-content:center;font-size:72px;padding-bottom:24px;}
 .dn-photo.noimg .dn-emo{display:flex;}
@@ -114,7 +114,32 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 .dn-credit{font-size:10px;color:#8A7F66;padding:5px 11px 6px;line-height:1.4;}
 .dn-credit a{color:inherit;}
 .dn-photo.noimg+.dn-credit{display:none;}
-#lunchPop .cheer{margin-top:10px;font-size:15px;font-weight:800;color:var(--purple);line-height:1.45;}
+a.dn-photo:active img{filter:brightness(.9);}
+.dn-go{position:absolute;right:10px;top:10px;background:var(--yellow);color:var(--purple-dark);font-size:12px;font-weight:800;border-radius:999px;padding:4px 10px;box-shadow:0 2px 6px rgba(0,0,0,.22);}
+/* 사진 아래 — 동네별 가게(누르면 카카오맵: 메뉴·주문)와 바로 전화 */
+.dn-shops{padding:2px 10px 10px;}
+.dn-sh{margin:4px 2px 0;font-size:11.5px;font-weight:800;color:#8A6A2E;}
+.dn-shop{display:flex;align-items:center;gap:8px;margin-top:6px;background:#fff;border-radius:12px;padding:7px 7px 7px 9px;}
+.dn-area{flex:none;font-size:11px;font-weight:800;color:var(--purple);background:var(--purple-light);border-radius:6px;padding:3px 6px;}
+.dn-nm{flex:1;min-width:0;color:var(--txt);text-decoration:none;font-size:13.5px;font-weight:800;line-height:1.3;}
+.dn-nm small{display:block;margin-top:1px;font-size:11px;font-weight:600;color:var(--txt-sub);}
+.dn-call{flex:none;width:36px;height:36px;border-radius:50%;background:#FFE9A8;display:flex;align-items:center;justify-content:center;font-size:17px;text-decoration:none;}
+/* 출근 팝업 응원 문구 — 보라 띠로 눈에 띄게 */
+#lunchPop .cheer{margin-top:12px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#6A4BD0,var(--purple));color:#fff;font-size:17px;font-weight:900;line-height:1.45;letter-spacing:-.2px;text-wrap:balance;box-shadow:0 6px 16px rgba(71,47,146,.32);animation:cheerin .5s cubic-bezier(.2,1.5,.4,1) .35s both;}
+@keyframes cheerin{from{transform:scale(.8);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){#lunchPop .cheer{animation:none;}}
+@media (max-height:620px){ /* 작은 폰 — 출퇴근 팝업이 한 화면에 들어오게 조금씩 줄인다 */
+  #lunchPop{padding:14px 14px 12px;}
+  #lunchPop .bento{font-size:32px;}
+  #lunchPop .pp-greet{margin-top:8px;padding-top:8px;}
+  #lunchPop .cheer{margin-top:8px;padding:9px 12px;font-size:16px;}
+  .wx2{margin-top:8px;}
+  .wx2-chips{margin-top:7px;}
+  .dn-photo{padding-top:50%;}
+  .dn-sh{display:none;}
+  .dn-shop{margin-top:5px;padding:5px 6px 5px 8px;}
+  .dn-call{width:32px;height:32px;font-size:15px;}
+}
 .btn.p{background:var(--purple);color:#fff;}
 .btn.y{background:var(--yellow);color:var(--purple-dark);}
 .btn.ghost{background:#fff;border:1.5px solid var(--purple);color:var(--purple);}
@@ -541,7 +566,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261101_000214'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261101_105750'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -975,8 +1000,8 @@ function cheerFor(){ // 요일 맞춤 응원 + 날짜 기준 순환
 }
 const GREET={
   rain:{emo:'☔',
-    in:['비 오는 출근길 고생하셨어요! 오늘도 화이팅입니다!','빗길에 안전하게 오셨죠? 산뜻하게 시작해요!','장마철 눅눅함은 잊고, 오늘도 상쾌한 하루 되세요!'],
-    out:['습한 장마 날씨에 정말 고생이 많았어요! 편안하고 시원한 저녁을 보내세요~!','비 오는 퇴근길, 우산 꼭 챙기고 조심히 들어가세요!','오늘도 수고했어요! 빗소리 들으며 포근한 저녁 되세요~']},
+    in:['비 오는 출근길 고생하셨어요! 오늘도 화이팅입니다!','빗길에 안전하게 오셨죠? 산뜻하게 시작해요!','장마철 눅눅함은 잊고, 오늘도 상쾌한 하루 되세요!','빗소리 들으며 차분하게 시작해요! 오늘도 좋은 하루 되세요!'],
+    out:['습한 장마 날씨에 정말 고생이 많았어요! 편안하고 시원한 저녁을 보내세요~!','비 오는 퇴근길, 우산 꼭 챙기고 조심히 들어가세요!','오늘도 수고했어요! 빗소리 들으며 포근한 저녁 되세요~','궂은 비에 오늘도 고생 많았어요! 따뜻하고 편안한 저녁 보내세요~!']},
   snow:{emo:'❄️',
     in:['눈길에 미끄러지지 않게 조심! 오늘도 따뜻한 하루 되세요!','하얀 눈과 함께 출근! 오늘도 힘차게 시작해요!','눈 오는 날 출근만으로도 대단해요! 화이팅!'],
     out:['눈길 퇴근길 조심조심! 따뜻한 저녁 보내세요~','오늘도 수고했어요! 미끄럼 조심해서 들어가세요!','포근한 눈처럼 포근한 저녁 되세요~']},
@@ -1010,13 +1035,11 @@ const MENU={ // id: 이름·사진 주소·저작자·라이선스·원본 페�
  jjamppong:{nm:'얼큰한 짬뽕',emo:'🍜',img:'https://upload.wikimedia.org/wikipedia/commons/4/42/Jjamppong-sujebi_2.jpg',by:'대경라이프',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Jjamppong-sujebi_2.jpg'},
  sujebi:{nm:'뜨끈한 수제비',emo:'🥣',img:'https://upload.wikimedia.org/wikipedia/commons/2/24/Jaecheop-sujebi_2.jpg',by:'굿바이 조미료',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Jaecheop-sujebi_2.jpg'},
  mandu:{nm:'김 모락모락 만두전골',emo:'🥟',img:'https://upload.wikimedia.org/wikipedia/commons/3/37/Mandu-jeongol.jpg',by:'경빈마마',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Mandu-jeongol.jpg'},
- eomuk:{nm:'뜨끈한 어묵탕',emo:'🍢',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/Eomuk-kkochi.jpg/960px-Eomuk-kkochi.jpg',by:'최광모',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Eomuk-kkochi.jpg'},
  udon:{nm:'따뜻한 우동 한 그릇',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg/960px-Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg',by:'IXTA9839',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg'},
  bossam:{nm:'야들야들 보쌈',emo:'🥬',img:'https://upload.wikimedia.org/wikipedia/commons/8/8f/Korean_cuisine-Bossam-04.jpg',by:'Timber Tank',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_cuisine-Bossam-04.jpg'},
  naengmyeon:{nm:'시원한 냉면',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/be/Mul-naengmyeon_1.jpg/960px-Mul-naengmyeon_1.jpg',by:'chomjong',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Mul-naengmyeon_1.jpg'},
  kongguksu:{nm:'고소한 콩국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/Kongguksu_08_%2827775694306%29.jpg/960px-Kongguksu_08_%2827775694306%29.jpg',by:'Republic of Korea',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Kongguksu_08_(27775694306).jpg'},
  samgyetang:{nm:'이열치열 삼계탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Jeju-do_samgyetang_with_abalone_02.jpg/960px-Jeju-do_samgyetang_with_abalone_02.jpg',by:'채지형',lic:'CC BY 4.0',src:'https://commons.wikimedia.org/wiki/File:Jeju-do_samgyetang_with_abalone_02.jpg'},
- chogye:{nm:'새콤한 초계국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3b/Chogye_Noodles.jpg/960px-Chogye_Noodles.jpg',by:'Ddehun',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Chogye_Noodles.jpg'},
  chimaek:{nm:'치킨에 시원한 맥주',emo:'🍺',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Iksan_City_48_Korean_Style_Fried_chicken.jpg/960px-Iksan_City_48_Korean_Style_Fried_chicken.jpg',by:'KOREA.NET',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Iksan_City_48_Korean_Style_Fried_chicken.jpg'},
  momil:{nm:'시원한 판모밀',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Zaru_soba_by_spinachdip.jpg/960px-Zaru_soba_by_spinachdip.jpg',by:'spinachdip',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Zaru_soba_by_spinachdip.jpg'},
  pho:{nm:'따뜻한 쌀국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/45/Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg/960px-Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg',by:'Andy Li',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg'},
@@ -1040,14 +1063,49 @@ const MENU={ // id: 이름·사진 주소·저작자·라이선스·원본 페�
 };
 const DINNER={ // 퇴근길 날씨별 후보 4가지 — 날마다 돌아가며 하나
  rain:['pajeon','kalguksu','sujebi','jjamppong'],
- snow:['mandu','eomuk','udon','bossam'],
- hot:['naengmyeon','kongguksu','samgyetang','chogye'],
+ snow:['mandu','udon','bossam','gamjatang'],
+ hot:['naengmyeon','kongguksu','samgyetang','momil'],
  warm:['chimaek','momil','pho','bibimguksu'],
  clear:['samgyeopsal','hoe','pasta','kimchijjigae'],
  cloudy:['budae','donkatsu','sundubu','jeyuk'],
  chilly:['gukbap','gamjatang','tteokbokki','udon'],
  cold:['seolleongtang','gopchang','maeuntang','kimchijjim'],
  def:['kimchijjigae','chicken','samgyeopsal','bibimbap']
+};
+// 메뉴마다 우리 동네 가게 두 곳 [이름, 동, 카카오맵 장소 번호, 전화] — 0: 일산(회사 근처) 1: 파주 운정
+// 2026-11-01 카카오맵에서 별점·후기 수·거리·저녁 영업을 보고 골랐고, 가게 메뉴에 그 음식이 있는지 확인함
+const SHOP={
+ samgyeopsal:[['김가네 김치두루치기 본점','가좌동','13297114','0503-7154-7919'],['운정삼겹','와동동','57341720','031-945-0690']],
+ pajeon:[['그때그 전집','대화동','341478659','031-917-7762'],['복래네바지락손칼국수','와동동','1323264816','031-949-9882']],
+ kalguksu:[['박승광해물칼국수 덕이점','덕이동','27390797','031-913-4028'],['복래네바지락손칼국수','와동동','1323264816','031-949-9882']],
+ jjamppong:[['탕수육섬','가좌동','632494906','031-922-4694'],['복만원 본점','와동동','13602831','031-948-8883']],
+ sujebi:[['작은정원쭈꾸미볶음 일산가좌본점','가좌동','24164882','031-921-3341'],['삽다리민물새우손수제비','동패동','1116569639','031-942-0090']],
+ mandu:[['허육도 능이마루 개성손만두','덕이동','1096175219','031-912-3888'],['파주엄마손만두','와동동','924183418','031-935-4772']],
+ udon:[['수유리우동집 가좌점','가좌동','1641349250','031-924-0924'],['인생우동','와동동','1997492035','070-7809-8603']],
+ bossam:[['더족발 일산점','가좌동','439676682','0503-5286-5824'],['박만배아리랑보쌈 파주운정점','목동동','2082061659','031-935-6273']],
+ naengmyeon:[['상록칡냉면 대화본점','대화동','52426305','031-915-7166'],['오실장강남면옥 운정점','와동동','521296207','031-944-5421']],
+ kongguksu:[['일산칼국수','가좌동','331019004','031-919-6649'],['수유리우동집 운정가람마을점','와동동','215858355','031-943-6888']],
+ samgyetang:[['계림삼계탕','덕이동','8175684','031-925-5552'],['이바닭삼계탕 운정점','야당동','1316957362','031-948-1777']],
+ chimaek:[['BHC치킨 일산가좌점','가좌동','827436518','031-923-7287'],['60계치킨 파주운정점','와동동','2001057735','031-947-8860']],
+ momil:[['나니와','대화동','21544235','031-961-6430'],['수유리우동집 운정가람마을점','와동동','215858355','031-943-6888']],
+ pho:[['스몰하노이 가좌점','가좌동','27529855','031-915-1584'],['포랑','목동동','1000609138','070-7797-7253']],
+ bibimguksu:[['일산육전국수 본점','덕이동','1230386379','031-915-9989'],['수유리우동집 운정가람마을점','와동동','215858355','031-943-6888']],
+ hoe:[['회싸게파는집 가좌점','가좌동','417457089','031-912-1003'],['회뜨는아빠 파주운정점','와동동','770749478','010-2279-1356']],
+ pasta:[['모퉁이주방','대화동','1473144687','010-7436-2288'],['이태리식당','와동동','1089656550','010-8638-8770']],
+ kimchijjigae:[['구산생고기김치찌개','구산동','103901051','031-922-6237'],['김치옥 파주운정점','와동동','404338667','031-935-4584']],
+ budae:[['땅스부대찌개 일산대화점','대화동','918224137','031-919-8599'],['황가네부대찌개 운정점','와동동','2022441873','031-945-4610']],
+ donkatsu:[['유미카츠 일산대화점','대화동','2123815135','031-919-1014'],['생돈까스랑냉면 운정본점','와동동','1358791227','070-7576-3089']],
+ sundubu:[['북창동순두부 일산대화점','대화동','631851561','031-912-0624'],['북창동순두부 야당역점','야당동','549615961','031-942-0101']],
+ jeyuk:[['김서영 완도맛집','가좌동','711591512','031-922-7870'],['오봉집 파주운정점','와동동','974667732','031-945-6595']],
+ gukbap:[['아바이토종순대국','덕이동','2051662822','031-919-7775'],['국밥참맛있는집 파주운정점','목동동','398346469','031-947-8882']],
+ gamjatang:[['별미감자탕','가좌동','12081792','031-921-6678'],['누리마을감자탕 운정점','목동동','815868916','031-943-9288']],
+ tteokbokki:[['다다떡볶이 일산본점','가좌동','1076348258','031-925-5720'],['김밥마는 할머니가래떡볶이 파주운정점','와동동','1007641826','031-948-3001']],
+ seolleongtang:[['명가원설농탕 덕이점','덕이동','811378853','031-916-9300'],['명가원설농탕 청석로점','동패동','50053000','031-937-8968']],
+ gopchang:[['일산황주집 일산본점','일산동','16773848','031-975-3237'],['곱다올','와동동','682747070','010-9277-4354']],
+ maeuntang:[['쌍돼지네 민물매운탕','구산동','576535215','031-923-1871'],['선상매운탕칼제비','와동동','1158677846','031-942-1101']],
+ kimchijjim:[['귀한김치찜 일산점','일산동','1197525665','0507-0278-9106'],['평화김치찜 운정점','목동동','647022955','0507-2084-0568']],
+ chicken:[['처갓집양념치킨 가좌대화점','가좌동','763088788','031-921-9248'],['굽네치킨 운정3호점','와동동','772738675','031-944-9392']],
+ bibimbap:[['본죽&비빔밥cafe 일산가좌점','가좌동','1521272712','031-925-6288'],['전주콩나물놀부장터즉석밀면','와동동','5751587','031-941-8000']]
 };
 function dinnerCat(){ // 퇴근길(17~20시) 예보로 고른다
   const w=window._wx; if(!w||!w.h)return 'def';
@@ -1068,12 +1126,21 @@ function dinnerToday(){ // 그날 메뉴는 아침에 한 번 정하고(기기�
 function dinnerPrefetch(){ // 퇴근 팝업에서 사진이 바로 뜨도록 미리 받아 둔다
   try{ const m=dinnerToday(); if(m.img&&window._dinnerImg!==m.img){ window._dinnerImg=m.img; (new Image()).src=m.img; } }catch(e){}
 }
-function dinnerCardHTML(){
+function dinnerCardHTML(){ // 사진을 누르면 회사 근처(일산) 가게의 카카오맵(메뉴·주문), 아래는 동네별 가게와 바로 전화
   const m=dinnerToday(); if(!m||!m.nm)return '';
-  return `<div class="dn-card"><div class="dn-photo${m.img?'':' noimg'}">`
-    +(m.img?`<img src="${m.img}" alt="${m.nm}" onerror="this.parentNode.classList.add('noimg');this.remove()">`:'')
-    +`<div class="dn-emo">${m.emo||'🍽️'}</div><span class="dn-badge">🍽️ 오늘 저녁 추천</span><div class="dn-cap">${m.nm} 어때요? 🤤</div></div>`
-    +(m.img?`<div class="dn-credit">사진: ${m.by} · ${m.lic} · <a href="${m.src}" target="_blank" rel="noopener">Wikimedia Commons</a></div>`:'')
+  const sh=SHOP[m.id]||[], kk=id=>`https://place.map.kakao.com/${id}`, cls=`dn-photo${m.img?'':' noimg'}`;
+  const photo=(m.img?`<img src="${m.img}" alt="${m.nm}" onerror="this.parentNode.classList.add('noimg');this.remove()">`:'')
+    +`<div class="dn-emo">${m.emo||'🍽️'}</div><span class="dn-badge">🍽️ 오늘 저녁 추천</span>`
+    +(sh[0]?'<span class="dn-go">주문하기 ›</span>':'')+`<div class="dn-cap">${m.nm} 어때요? 🤤</div>`;
+  return '<div class="dn-card">'
+    +(sh[0]?`<a class="${cls}" href="${kk(sh[0][2])}" target="_blank" rel="noopener">${photo}</a>`:`<div class="${cls}">${photo}</div>`)
+    +(m.img?`<div class="dn-credit">예시 사진: ${m.by} · ${m.lic} · <a href="${m.src}" target="_blank" rel="noopener">Wikimedia Commons</a></div>`:'')
+    +(sh.length?'<div class="dn-shops"><div class="dn-sh">📍 우리 동네에서 주문하기</div>'+sh.map((s,i)=>{
+      const [nm,br]=(s[0].match(/^(.+) (\S+점)$/)||[,s[0],'']).slice(1); // 지점 이름은 아랫줄로
+      return `<div class="dn-shop"><span class="dn-area">${['일산','운정'][i]}</span>`
+        +`<a class="dn-nm" href="${kk(s[2])}" target="_blank" rel="noopener">${nm}&nbsp;›<small>${br?br+' · ':''}${s[1]}</small></a>`
+        +`<a class="dn-call" href="tel:${s[3].replace(/-/g,'')}" aria-label="${s[0]}에 전화 주문">📞</a></div>`;
+    }).join('')+'</div>':'')
     +'</div>';
 }
 function wxCat(){
@@ -1089,8 +1156,8 @@ function wxCat(){
   return 'cloudy';
 }
 function greetingFor(kind){ // 날짜 기준 순환 → 매일 다른 인사말
-  const g=GREET[wxCat()]||GREET.def;
-  const arr=g[kind]||GREET.def[kind];
+  const g=GREET[wxCat()]||GREET.def, mo=new Date().getMonth()+1;
+  const arr=(g[kind]||GREET.def[kind]).filter(s=>(mo>=6&&mo<=8)||!s.includes('장마')); // '장마' 문구는 6~8월에만
   return {emo:g.emo,msg:arr[doyNow()%arr.length]};
 }
 // 출퇴근 직후 팝업: 도시락 +1(해당 시) + 이름 부르는 날씨 인사말
