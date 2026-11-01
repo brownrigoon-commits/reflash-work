@@ -116,7 +116,13 @@ h3.sub{font-size:14px;font-weight:700;color:var(--purple);margin:18px 2px 8px;}
 .dn-photo.noimg+.dn-credit{display:none;}
 a.dn-photo:active img{filter:brightness(.9);}
 .dn-go{position:absolute;right:10px;top:10px;background:var(--yellow);color:var(--purple-dark);font-size:12px;font-weight:800;border-radius:999px;padding:4px 10px;box-shadow:0 2px 6px rgba(0,0,0,.22);}
-/* 사진 아래 — 동네별 가게(누르면 카카오맵: 메뉴·주문)와 바로 전화 */
+/* 쿠팡이츠 띠 — 사진과 같은 동작(앱 열기 + 음식 이름 복사) */
+.dn-eats{display:block;margin:6px 10px 0;padding:9px 12px;border-radius:14px;background:var(--purple);color:#fff;text-align:center;text-decoration:none;line-height:1.35;box-shadow:0 3px 10px rgba(71,47,146,.25);-webkit-tap-highlight-color:transparent;}
+.dn-eats:active{filter:brightness(.9);}
+.dn-eats b{display:block;font-size:15px;font-weight:900;}
+.dn-eats small{display:block;margin-top:2px;font-size:11.5px;font-weight:600;opacity:.9;text-wrap:balance;}
+.dn-eats:last-child{margin-bottom:10px;}
+/* 그 아래 — 동네 맛집(누르면 카카오맵: 메뉴·후기)과 바로 전화 */
 .dn-shops{padding:2px 10px 10px;}
 .dn-sh{margin:4px 2px 0;font-size:11.5px;font-weight:800;color:#8A6A2E;}
 .dn-shop{display:flex;align-items:center;gap:8px;margin-top:6px;background:#fff;border-radius:12px;padding:7px 7px 7px 9px;}
@@ -128,17 +134,27 @@ a.dn-photo:active img{filter:brightness(.9);}
 #lunchPop .cheer{margin-top:12px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#6A4BD0,var(--purple));color:#fff;font-size:17px;font-weight:900;line-height:1.45;letter-spacing:-.2px;text-wrap:balance;box-shadow:0 6px 16px rgba(71,47,146,.32);animation:cheerin .5s cubic-bezier(.2,1.5,.4,1) .35s both;}
 @keyframes cheerin{from{transform:scale(.8);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){#lunchPop .cheer{animation:none;}}
-@media (max-height:620px){ /* 작은 폰 — 출퇴근 팝업이 한 화면에 들어오게 조금씩 줄인다 */
+@media (max-height:720px){ /* 보통 폰 — 퇴근 팝업(사진·쿠팡이츠 띠·가게)이 한 화면에 들어오게 조금씩 줄인다 */
   #lunchPop{padding:14px 14px 12px;}
   #lunchPop .bento{font-size:32px;}
   #lunchPop .pp-greet{margin-top:8px;padding-top:8px;}
-  #lunchPop .cheer{margin-top:8px;padding:9px 12px;font-size:16px;}
-  .wx2{margin-top:8px;}
-  .wx2-chips{margin-top:7px;}
-  .dn-photo{padding-top:50%;}
+  .dn-card{margin-top:10px;}
+  .dn-photo{padding-top:52%;}
+  .dn-eats{margin-top:4px;padding:6px 10px;}
+  .dn-eats b{font-size:14px;}
   .dn-sh{display:none;}
   .dn-shop{margin-top:5px;padding:5px 6px 5px 8px;}
   .dn-call{width:32px;height:32px;font-size:15px;}
+}
+@media (max-height:620px){ /* 작은 폰 — 더 줄인다 */
+  #lunchPop .cheer{margin-top:8px;padding:9px 12px;font-size:16px;}
+  .wx2{margin-top:8px;}
+  .wx2-chips{margin-top:7px;}
+  .dn-photo{padding-top:40%;}
+  .dn-credit{padding:4px 11px;}
+  .dn-shops{padding:0 10px 8px;}
+  .dn-nm small{display:none;}
+  #lunchPop .btn.wide{margin-top:10px!important;}
 }
 .btn.p{background:var(--purple);color:#fff;}
 .btn.y{background:var(--yellow);color:var(--purple-dark);}
@@ -566,7 +582,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261101_105750'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261101_124700'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1028,38 +1044,38 @@ const GREET={
     out:['오늘도 수고 많으셨습니다!','고생했어요! 편안한 저녁 되세요~','내일 또 만나요! 푹 쉬세요~']}
 };
 // 퇴근 팝업의 오늘 저녁 추천 메뉴 — 사진은 Wikimedia Commons의 자유 이용 사진(저작자·라이선스 표시)
-const MENU={ // id: 이름·사진 주소·저작자·라이선스·원본 페이지
- samgyeopsal:{nm:'지글지글 삼겹살',emo:'🥓',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/81/Korean.cuisine-Samgyeopsal-08.jpg/960px-Korean.cuisine-Samgyeopsal-08.jpg',by:'VirtualErn',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.cuisine-Samgyeopsal-08.jpg'},
- pajeon:{nm:'바삭한 파전에 막걸리',emo:'🥞',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Pajeon.jpg/960px-Pajeon.jpg',by:'Brücke-Osteuropa',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Pajeon.jpg'},
- kalguksu:{nm:'뜨끈한 칼국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b8/Korean.noodle-Kalguksu-01.jpg/960px-Korean.noodle-Kalguksu-01.jpg',by:'jslander',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.noodle-Kalguksu-01.jpg'},
- jjamppong:{nm:'얼큰한 짬뽕',emo:'🍜',img:'https://upload.wikimedia.org/wikipedia/commons/4/42/Jjamppong-sujebi_2.jpg',by:'대경라이프',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Jjamppong-sujebi_2.jpg'},
- sujebi:{nm:'뜨끈한 수제비',emo:'🥣',img:'https://upload.wikimedia.org/wikipedia/commons/2/24/Jaecheop-sujebi_2.jpg',by:'굿바이 조미료',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Jaecheop-sujebi_2.jpg'},
- mandu:{nm:'김 모락모락 만두전골',emo:'🥟',img:'https://upload.wikimedia.org/wikipedia/commons/3/37/Mandu-jeongol.jpg',by:'경빈마마',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Mandu-jeongol.jpg'},
- udon:{nm:'따뜻한 우동 한 그릇',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg/960px-Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg',by:'IXTA9839',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg'},
- bossam:{nm:'야들야들 보쌈',emo:'🥬',img:'https://upload.wikimedia.org/wikipedia/commons/8/8f/Korean_cuisine-Bossam-04.jpg',by:'Timber Tank',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_cuisine-Bossam-04.jpg'},
- naengmyeon:{nm:'시원한 냉면',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/be/Mul-naengmyeon_1.jpg/960px-Mul-naengmyeon_1.jpg',by:'chomjong',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Mul-naengmyeon_1.jpg'},
- kongguksu:{nm:'고소한 콩국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/Kongguksu_08_%2827775694306%29.jpg/960px-Kongguksu_08_%2827775694306%29.jpg',by:'Republic of Korea',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Kongguksu_08_(27775694306).jpg'},
- samgyetang:{nm:'이열치열 삼계탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Jeju-do_samgyetang_with_abalone_02.jpg/960px-Jeju-do_samgyetang_with_abalone_02.jpg',by:'채지형',lic:'CC BY 4.0',src:'https://commons.wikimedia.org/wiki/File:Jeju-do_samgyetang_with_abalone_02.jpg'},
- chimaek:{nm:'치킨에 시원한 맥주',emo:'🍺',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Iksan_City_48_Korean_Style_Fried_chicken.jpg/960px-Iksan_City_48_Korean_Style_Fried_chicken.jpg',by:'KOREA.NET',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Iksan_City_48_Korean_Style_Fried_chicken.jpg'},
- momil:{nm:'시원한 판모밀',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Zaru_soba_by_spinachdip.jpg/960px-Zaru_soba_by_spinachdip.jpg',by:'spinachdip',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Zaru_soba_by_spinachdip.jpg'},
- pho:{nm:'따뜻한 쌀국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/45/Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg/960px-Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg',by:'Andy Li',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg'},
- bibimguksu:{nm:'매콤 비빔국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg/960px-%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg',by:'Hj03064',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg'},
- hoe:{nm:'싱싱한 회 한 접시',emo:'🐟',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c3/Korean_cuisine-Hoe-04.jpg/960px-Korean_cuisine-Hoe-04.jpg',by:'Rhett Sutphin',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_cuisine-Hoe-04.jpg'},
- pasta:{nm:'기분 내는 파스타',emo:'🍝',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Espaguetis_carbonara.jpg/960px-Espaguetis_carbonara.jpg',by:'Javier Somoza',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Espaguetis_carbonara.jpg'},
- kimchijjigae:{nm:'보글보글 김치찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4c/Korean_stew-Kimchi_jjigae-01.jpg/960px-Korean_stew-Kimchi_jjigae-01.jpg',by:'miyagawa',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_stew-Kimchi_jjigae-01.jpg'},
- budae:{nm:'푸짐한 부대찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/54/Budae_jjigae_before_boiling.jpg/960px-Budae_jjigae_before_boiling.jpg',by:'Dlunch',lic:'CC BY-SA 2.5',src:'https://commons.wikimedia.org/wiki/File:Budae_jjigae_before_boiling.jpg'},
- donkatsu:{nm:'바삭한 돈까스',emo:'🍽️',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Tonkatsu_of_Kimukatsu.jpg/960px-Tonkatsu_of_Kimukatsu.jpg',by:'Minseong Kim',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Tonkatsu_of_Kimukatsu.jpg'},
- sundubu:{nm:'뜨끈한 순두부찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Korean_stew-Sundubu_jjigae-05.jpg/960px-Korean_stew-Sundubu_jjigae-05.jpg',by:'titanium22',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_stew-Sundubu_jjigae-05.jpg'},
- jeyuk:{nm:'매콤한 제육볶음',emo:'🌶️',img:'https://upload.wikimedia.org/wikipedia/commons/7/70/Jeyuk-bokkeum_4.jpg',by:'대경라이프',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Jeyuk-bokkeum_4.jpg'},
- gukbap:{nm:'뜨끈한 돼지국밥',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg/960px-%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg',by:'Leefect',lic:'CC BY-SA 3.0',src:'https://commons.wikimedia.org/wiki/File:%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg'},
- gamjatang:{nm:'든든한 감자탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7e/Korean.food-Gamjatang-01.jpg/960px-Korean.food-Gamjatang-01.jpg',by:'comicpie',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.food-Gamjatang-01.jpg'},
- tteokbokki:{nm:'매콤한 떡볶이',emo:'🌶️',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Tteokbokki_making_process_step_5.jpg/960px-Tteokbokki_making_process_step_5.jpg',by:'Teemeah',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Tteokbokki_making_process_step_5.jpg'},
- seolleongtang:{nm:'뜨끈한 설렁탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cc/Seolleongtang_1.jpg/960px-Seolleongtang_1.jpg',by:'lazy fri13th',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Seolleongtang_1.jpg'},
- gopchang:{nm:'얼큰한 곱창전골',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Gopchang-jeongol_2.jpg/960px-Gopchang-jeongol_2.jpg',by:'lazy fri13th',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Gopchang-jeongol_2.jpg'},
- maeuntang:{nm:'시원칼칼 매운탕',emo:'🐟',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/KOCIS_maeuntang%2C_spicy_fish_soup_%285035733642%29.jpg/960px-KOCIS_maeuntang%2C_spicy_fish_soup_%285035733642%29.jpg',by:'Korea.net',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:KOCIS_maeuntang,_spicy_fish_soup_(5035733642).jpg'},
- kimchijjim:{nm:'밥도둑 김치찜',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Gimchi-jjim.jpg/960px-Gimchi-jjim.jpg',by:'I. H Cho',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Gimchi-jjim.jpg'},
- chicken:{nm:'바삭한 치킨',emo:'🍗',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Korean_fried_chicken_bbq.jpg/960px-Korean_fried_chicken_bbq.jpg',by:'Startandstar',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Korean_fried_chicken_bbq.jpg'},
- bibimbap:{nm:'든든한 비빔밥',emo:'🍚',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Korean.food-Bibimbap-02.jpg/960px-Korean.food-Bibimbap-02.jpg',by:'abex',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.food-Bibimbap-02.jpg'}
+const MENU={ // id: 이름·쿠팡이츠 검색어·사진 주소·저작자·라이선스·원본 페이지
+ samgyeopsal:{nm:'지글지글 삼겹살',q:'삼겹살',emo:'🥓',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/81/Korean.cuisine-Samgyeopsal-08.jpg/960px-Korean.cuisine-Samgyeopsal-08.jpg',by:'VirtualErn',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.cuisine-Samgyeopsal-08.jpg'},
+ pajeon:{nm:'바삭한 파전에 막걸리',q:'파전',emo:'🥞',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Pajeon.jpg/960px-Pajeon.jpg',by:'Brücke-Osteuropa',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Pajeon.jpg'},
+ kalguksu:{nm:'뜨끈한 칼국수',q:'칼국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b8/Korean.noodle-Kalguksu-01.jpg/960px-Korean.noodle-Kalguksu-01.jpg',by:'jslander',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.noodle-Kalguksu-01.jpg'},
+ jjamppong:{nm:'얼큰한 짬뽕',q:'짬뽕',emo:'🍜',img:'https://upload.wikimedia.org/wikipedia/commons/4/42/Jjamppong-sujebi_2.jpg',by:'대경라이프',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Jjamppong-sujebi_2.jpg'},
+ sujebi:{nm:'뜨끈한 수제비',q:'수제비',emo:'🥣',img:'https://upload.wikimedia.org/wikipedia/commons/2/24/Jaecheop-sujebi_2.jpg',by:'굿바이 조미료',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Jaecheop-sujebi_2.jpg'},
+ mandu:{nm:'김 모락모락 만두전골',q:'만두전골',emo:'🥟',img:'https://upload.wikimedia.org/wikipedia/commons/3/37/Mandu-jeongol.jpg',by:'경빈마마',lic:'CC BY 2.0 KR',src:'https://commons.wikimedia.org/wiki/File:Mandu-jeongol.jpg'},
+ udon:{nm:'따뜻한 우동 한 그릇',q:'우동',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg/960px-Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg',by:'IXTA9839',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Chicken_and_burdock_tempura_udon_in_Sukesan_Udon_Maebashi-Nishi.jpg'},
+ bossam:{nm:'야들야들 보쌈',q:'보쌈',emo:'🥬',img:'https://upload.wikimedia.org/wikipedia/commons/8/8f/Korean_cuisine-Bossam-04.jpg',by:'Timber Tank',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_cuisine-Bossam-04.jpg'},
+ naengmyeon:{nm:'시원한 냉면',q:'냉면',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/be/Mul-naengmyeon_1.jpg/960px-Mul-naengmyeon_1.jpg',by:'chomjong',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Mul-naengmyeon_1.jpg'},
+ kongguksu:{nm:'고소한 콩국수',q:'콩국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/Kongguksu_08_%2827775694306%29.jpg/960px-Kongguksu_08_%2827775694306%29.jpg',by:'Republic of Korea',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Kongguksu_08_(27775694306).jpg'},
+ samgyetang:{nm:'이열치열 삼계탕',q:'삼계탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Jeju-do_samgyetang_with_abalone_02.jpg/960px-Jeju-do_samgyetang_with_abalone_02.jpg',by:'채지형',lic:'CC BY 4.0',src:'https://commons.wikimedia.org/wiki/File:Jeju-do_samgyetang_with_abalone_02.jpg'},
+ chimaek:{nm:'치킨에 시원한 맥주',q:'치킨',emo:'🍺',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Iksan_City_48_Korean_Style_Fried_chicken.jpg/960px-Iksan_City_48_Korean_Style_Fried_chicken.jpg',by:'KOREA.NET',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Iksan_City_48_Korean_Style_Fried_chicken.jpg'},
+ momil:{nm:'시원한 판모밀',q:'모밀',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Zaru_soba_by_spinachdip.jpg/960px-Zaru_soba_by_spinachdip.jpg',by:'spinachdip',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Zaru_soba_by_spinachdip.jpg'},
+ pho:{nm:'따뜻한 쌀국수',q:'쌀국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/45/Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg/960px-Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg',by:'Andy Li',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Pho_Bo_by_Banh_%26_Mee_in_Kirkgate_Market.jpg'},
+ bibimguksu:{nm:'매콤 비빔국수',q:'비빔국수',emo:'🍜',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg/960px-%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg',by:'Hj03064',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:%EB%B9%84%EB%B9%94_%EB%A9%B4.jpg'},
+ hoe:{nm:'싱싱한 회 한 접시',q:'모둠회',emo:'🐟',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c3/Korean_cuisine-Hoe-04.jpg/960px-Korean_cuisine-Hoe-04.jpg',by:'Rhett Sutphin',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_cuisine-Hoe-04.jpg'},
+ pasta:{nm:'기분 내는 파스타',q:'파스타',emo:'🍝',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Espaguetis_carbonara.jpg/960px-Espaguetis_carbonara.jpg',by:'Javier Somoza',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Espaguetis_carbonara.jpg'},
+ kimchijjigae:{nm:'보글보글 김치찌개',q:'김치찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4c/Korean_stew-Kimchi_jjigae-01.jpg/960px-Korean_stew-Kimchi_jjigae-01.jpg',by:'miyagawa',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_stew-Kimchi_jjigae-01.jpg'},
+ budae:{nm:'푸짐한 부대찌개',q:'부대찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/54/Budae_jjigae_before_boiling.jpg/960px-Budae_jjigae_before_boiling.jpg',by:'Dlunch',lic:'CC BY-SA 2.5',src:'https://commons.wikimedia.org/wiki/File:Budae_jjigae_before_boiling.jpg'},
+ donkatsu:{nm:'바삭한 돈까스',q:'돈까스',emo:'🍽️',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Tonkatsu_of_Kimukatsu.jpg/960px-Tonkatsu_of_Kimukatsu.jpg',by:'Minseong Kim',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Tonkatsu_of_Kimukatsu.jpg'},
+ sundubu:{nm:'뜨끈한 순두부찌개',q:'순두부찌개',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Korean_stew-Sundubu_jjigae-05.jpg/960px-Korean_stew-Sundubu_jjigae-05.jpg',by:'titanium22',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean_stew-Sundubu_jjigae-05.jpg'},
+ jeyuk:{nm:'매콤한 제육볶음',q:'제육볶음',emo:'🌶️',img:'https://upload.wikimedia.org/wikipedia/commons/7/70/Jeyuk-bokkeum_4.jpg',by:'대경라이프',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Jeyuk-bokkeum_4.jpg'},
+ gukbap:{nm:'뜨끈한 돼지국밥',q:'국밥',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg/960px-%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg',by:'Leefect',lic:'CC BY-SA 3.0',src:'https://commons.wikimedia.org/wiki/File:%EB%8F%BC%EC%A7%80%EA%B5%AD%EB%B0%A5.jpg'},
+ gamjatang:{nm:'든든한 감자탕',q:'감자탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7e/Korean.food-Gamjatang-01.jpg/960px-Korean.food-Gamjatang-01.jpg',by:'comicpie',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.food-Gamjatang-01.jpg'},
+ tteokbokki:{nm:'매콤한 떡볶이',q:'떡볶이',emo:'🌶️',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Tteokbokki_making_process_step_5.jpg/960px-Tteokbokki_making_process_step_5.jpg',by:'Teemeah',lic:'CC BY-SA 4.0',src:'https://commons.wikimedia.org/wiki/File:Tteokbokki_making_process_step_5.jpg'},
+ seolleongtang:{nm:'뜨끈한 설렁탕',q:'설렁탕',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cc/Seolleongtang_1.jpg/960px-Seolleongtang_1.jpg',by:'lazy fri13th',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Seolleongtang_1.jpg'},
+ gopchang:{nm:'얼큰한 곱창전골',q:'곱창전골',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Gopchang-jeongol_2.jpg/960px-Gopchang-jeongol_2.jpg',by:'lazy fri13th',lic:'CC BY 2.0',src:'https://commons.wikimedia.org/wiki/File:Gopchang-jeongol_2.jpg'},
+ maeuntang:{nm:'시원칼칼 매운탕',q:'매운탕',emo:'🐟',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/KOCIS_maeuntang%2C_spicy_fish_soup_%285035733642%29.jpg/960px-KOCIS_maeuntang%2C_spicy_fish_soup_%285035733642%29.jpg',by:'Korea.net',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:KOCIS_maeuntang,_spicy_fish_soup_(5035733642).jpg'},
+ kimchijjim:{nm:'밥도둑 김치찜',q:'김치찜',emo:'🍲',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Gimchi-jjim.jpg/960px-Gimchi-jjim.jpg',by:'I. H Cho',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Gimchi-jjim.jpg'},
+ chicken:{nm:'바삭한 치킨',q:'치킨',emo:'🍗',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Korean_fried_chicken_bbq.jpg/960px-Korean_fried_chicken_bbq.jpg',by:'Startandstar',lic:'CC0',src:'https://commons.wikimedia.org/wiki/File:Korean_fried_chicken_bbq.jpg'},
+ bibimbap:{nm:'든든한 비빔밥',q:'비빔밥',emo:'🍚',img:'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Korean.food-Bibimbap-02.jpg/960px-Korean.food-Bibimbap-02.jpg',by:'abex',lic:'CC BY-SA 2.0',src:'https://commons.wikimedia.org/wiki/File:Korean.food-Bibimbap-02.jpg'}
 };
 const DINNER={ // 퇴근길 날씨별 후보 4가지 — 날마다 돌아가며 하나
  rain:['pajeon','kalguksu','sujebi','jjamppong'],
@@ -1126,16 +1142,35 @@ function dinnerToday(){ // 그날 메뉴는 아침에 한 번 정하고(기기�
 function dinnerPrefetch(){ // 퇴근 팝업에서 사진이 바로 뜨도록 미리 받아 둔다
   try{ const m=dinnerToday(); if(m.img&&window._dinnerImg!==m.img){ window._dinnerImg=m.img; (new Image()).src=m.img; } }catch(e){}
 }
-function dinnerCardHTML(){ // 사진을 누르면 회사 근처(일산) 가게의 카카오맵(메뉴·주문), 아래는 동네별 가게와 바로 전화
+// 쿠팡이츠 앱 열기 — 음식 이름으로 바로 검색하는 공개 주소가 없어서, 앱을 열고 검색어는 복사해 둔다
+// 'Home?tab=HOME'은 쿠팡이츠 공식 공유 링크가 여는 앱 화면 주소와 같다(2026-11-01 확인. 가게 화면은 'StoreDetail?storeId=번호')
+function eatsHref(path){
+  const ua=navigator.userAgent, pkg='com.coupang.mobile.eats';
+  if(/Android/i.test(ua))return `intent://${path}#Intent;scheme=coupangeats;package=${pkg};S.browser_fallback_url=${encodeURIComponent('https://play.google.com/store/apps/details?id='+pkg)};end`; // 앱이 없으면 플레이스토어
+  if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return `coupangeats://${path}`;
+  return '#'; // 컴퓨터 — 앱이 없으니 검색어만 복사
+}
+function eatsGo(a){ // 누르면 검색어를 복사하고, 휴대폰이면 그대로 쿠팡이츠 앱으로 넘어간다(같은 창 — 새 창이면 앱이 안 열림)
+  const q=a.dataset.q, app=a.getAttribute('href')!=='#';
+  const tip=a.closest('.dn-card').querySelector('.dn-eats small'), say=t=>{ if(tip)tip.textContent=t; };
+  const typeIt=()=>say(`쿠팡이츠 검색창에 ‘${q}’ 입력하세요`);
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(q).then(()=>say(`✅ ‘${q}’ 복사됨 · ${app?'검색창에 붙여넣으세요':'쿠팡이츠는 휴대폰 앱에서 열려요'}`),typeIt);
+  } else typeIt();
+  return app;
+}
+function dinnerCardHTML(){ // 사진·보라 띠를 누르면 쿠팡이츠(음식 이름은 복사), 아래는 동네 맛집 지도와 바로 전화
   const m=dinnerToday(); if(!m||!m.nm)return '';
-  const sh=SHOP[m.id]||[], kk=id=>`https://place.map.kakao.com/${id}`, cls=`dn-photo${m.img?'':' noimg'}`;
-  const photo=(m.img?`<img src="${m.img}" alt="${m.nm}" onerror="this.parentNode.classList.add('noimg');this.remove()">`:'')
-    +`<div class="dn-emo">${m.emo||'🍽️'}</div><span class="dn-badge">🍽️ 오늘 저녁 추천</span>`
-    +(sh[0]?'<span class="dn-go">주문하기 ›</span>':'')+`<div class="dn-cap">${m.nm} 어때요? 🤤</div>`;
+  const sh=SHOP[m.id]||[], q=m.q||m.nm, kk=id=>`https://place.map.kakao.com/${id}`;
+  const eats=`href="${eatsHref('Home?tab=HOME')}" data-q="${q}" onclick="return eatsGo(this)"`;
   return '<div class="dn-card">'
-    +(sh[0]?`<a class="${cls}" href="${kk(sh[0][2])}" target="_blank" rel="noopener">${photo}</a>`:`<div class="${cls}">${photo}</div>`)
+    +`<a class="dn-photo${m.img?'':' noimg'}" ${eats}>`
+    +(m.img?`<img src="${m.img}" alt="${m.nm}" onerror="this.parentNode.classList.add('noimg');this.remove()">`:'')
+    +`<div class="dn-emo">${m.emo||'🍽️'}</div><span class="dn-badge">🍽️ 오늘 저녁 추천</span>`
+    +`<span class="dn-go">쿠팡이츠 ›</span><div class="dn-cap">${m.nm} 어때요? 🤤</div></a>`
     +(m.img?`<div class="dn-credit">예시 사진: ${m.by} · ${m.lic} · <a href="${m.src}" target="_blank" rel="noopener">Wikimedia Commons</a></div>`:'')
-    +(sh.length?'<div class="dn-shops"><div class="dn-sh">📍 우리 동네에서 주문하기</div>'+sh.map((s,i)=>{
+    +`<a class="dn-eats" ${eats}><b>🛵 쿠팡이츠로 주문하기 ›</b><small>‘${q}’ 복사 → 검색창에 붙여넣기</small></a>`
+    +(sh.length?'<div class="dn-shops"><div class="dn-sh">📍 우리 동네 맛집 · 전화 주문</div>'+sh.map((s,i)=>{
       const [nm,br]=(s[0].match(/^(.+) (\S+점)$/)||[,s[0],'']).slice(1); // 지점 이름은 아랫줄로
       return `<div class="dn-shop"><span class="dn-area">${['일산','운정'][i]}</span>`
         +`<a class="dn-nm" href="${kk(s[2])}" target="_blank" rel="noopener">${nm}&nbsp;›<small>${br?br+' · ':''}${s[1]}</small></a>`
