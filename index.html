@@ -582,7 +582,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261101_124700'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261101_145824'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1142,34 +1142,35 @@ function dinnerToday(){ // 그날 메뉴는 아침에 한 번 정하고(기기�
 function dinnerPrefetch(){ // 퇴근 팝업에서 사진이 바로 뜨도록 미리 받아 둔다
   try{ const m=dinnerToday(); if(m.img&&window._dinnerImg!==m.img){ window._dinnerImg=m.img; (new Image()).src=m.img; } }catch(e){}
 }
-// 쿠팡이츠 앱 열기 — 음식 이름으로 바로 검색하는 공개 주소가 없어서, 앱을 열고 검색어는 복사해 둔다
-// 'Home?tab=HOME'은 쿠팡이츠 공식 공유 링크가 여는 앱 화면 주소와 같다(2026-11-01 확인. 가게 화면은 'StoreDetail?storeId=번호')
+// 쿠팡이츠 앱 열기 — 'SearchResult?keyword=음식'이면 앱의 검색 결과 화면(그 음식을 파는 가게 목록)이 바로 열린다
+// 화면 이름은 쿠팡이츠 웹 코드(eats-mobile-web)가 앱 화면을 부르는 주소에서, 검색어 칸 이름은 같은 웹의 검색 페이지(/search?keyword=)에서 확인(2026-11-01)
+// 공식 문서는 없다. 홈은 'Home?tab=HOME', 가게 화면은 'StoreDetail?storeId=번호'(쿠팡이츠 공유 링크가 여는 주소)
 function eatsHref(path){
   const ua=navigator.userAgent, pkg='com.coupang.mobile.eats';
   if(/Android/i.test(ua))return `intent://${path}#Intent;scheme=coupangeats;package=${pkg};S.browser_fallback_url=${encodeURIComponent('https://play.google.com/store/apps/details?id='+pkg)};end`; // 앱이 없으면 플레이스토어
   if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return `coupangeats://${path}`;
   return '#'; // 컴퓨터 — 앱이 없으니 검색어만 복사
 }
-function eatsGo(a){ // 누르면 검색어를 복사하고, 휴대폰이면 그대로 쿠팡이츠 앱으로 넘어간다(같은 창 — 새 창이면 앱이 안 열림)
+function eatsGo(a){ // 누르면 검색어도 복사해 두고(검색 결과가 안 뜨면 붙여넣기용), 휴대폰이면 그대로 쿠팡이츠 앱으로 넘어간다(같은 창 — 새 창이면 앱이 안 열림)
   const q=a.dataset.q, app=a.getAttribute('href')!=='#';
   const tip=a.closest('.dn-card').querySelector('.dn-eats small'), say=t=>{ if(tip)tip.textContent=t; };
-  const typeIt=()=>say(`쿠팡이츠 검색창에 ‘${q}’ 입력하세요`);
+  const typeIt=()=>say(app?`안 뜨면 검색창에 ‘${q}’ 입력`:`쿠팡이츠 검색창에 ‘${q}’ 입력하세요`);
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(q).then(()=>say(`✅ ‘${q}’ 복사됨 · ${app?'검색창에 붙여넣으세요':'쿠팡이츠는 휴대폰 앱에서 열려요'}`),typeIt);
+    navigator.clipboard.writeText(q).then(()=>say(app?`‘${q}’ 복사됨 · 안 뜨면 붙여넣기`:`✅ ‘${q}’ 복사됨 · 쿠팡이츠는 휴대폰 앱에서 열려요`),typeIt); // 앱 쪽 문구는 320px 폰에서도 한 줄
   } else typeIt();
   return app;
 }
-function dinnerCardHTML(){ // 사진·보라 띠를 누르면 쿠팡이츠(음식 이름은 복사), 아래는 동네 맛집 지도와 바로 전화
+function dinnerCardHTML(){ // 사진·보라 띠를 누르면 쿠팡이츠 검색 결과(그 음식 파는 가게들), 아래는 동네 맛집 지도와 바로 전화
   const m=dinnerToday(); if(!m||!m.nm)return '';
   const sh=SHOP[m.id]||[], q=m.q||m.nm, kk=id=>`https://place.map.kakao.com/${id}`;
-  const eats=`href="${eatsHref('Home?tab=HOME')}" data-q="${q}" onclick="return eatsGo(this)"`;
+  const eats=`href="${eatsHref('SearchResult?keyword='+encodeURIComponent(q))}" data-q="${q}" onclick="return eatsGo(this)"`;
   return '<div class="dn-card">'
     +`<a class="dn-photo${m.img?'':' noimg'}" ${eats}>`
     +(m.img?`<img src="${m.img}" alt="${m.nm}" onerror="this.parentNode.classList.add('noimg');this.remove()">`:'')
     +`<div class="dn-emo">${m.emo||'🍽️'}</div><span class="dn-badge">🍽️ 오늘 저녁 추천</span>`
     +`<span class="dn-go">쿠팡이츠 ›</span><div class="dn-cap">${m.nm} 어때요? 🤤</div></a>`
     +(m.img?`<div class="dn-credit">예시 사진: ${m.by} · ${m.lic} · <a href="${m.src}" target="_blank" rel="noopener">Wikimedia Commons</a></div>`:'')
-    +`<a class="dn-eats" ${eats}><b>🛵 쿠팡이츠로 주문하기 ›</b><small>‘${q}’ 복사 → 검색창에 붙여넣기</small></a>`
+    +`<a class="dn-eats" ${eats}><b>🛵 쿠팡이츠로 주문하기 ›</b><small>‘${q}’ 파는 가게 바로 보기</small></a>`
     +(sh.length?'<div class="dn-shops"><div class="dn-sh">📍 우리 동네 맛집 · 전화 주문</div>'+sh.map((s,i)=>{
       const [nm,br]=(s[0].match(/^(.+) (\S+점)$/)||[,s[0],'']).slice(1); // 지점 이름은 아랫줄로
       return `<div class="dn-shop"><span class="dn-area">${['일산','운정'][i]}</span>`
