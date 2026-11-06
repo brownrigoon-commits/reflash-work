@@ -479,6 +479,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <button class="btn p" style="flex:1;" id="btnIn" onclick="doPunch('in')">출근하기</button>
     <button class="btn y" style="flex:1;" id="btnOut" onclick="doPunch('out')">퇴근하기</button>
   </div>
+  <button id="btnOtRpt" class="btn y wide" style="margin-top:8px;display:none;" onclick="otRptOpen()">🌙 야근 입력하기</button>
   <button id="btnUndo" class="btn red wide" style="margin-top:8px;display:none;" onclick="undoPunch()">↩️ 잘못 눌렀어요 — 기록 취소</button>
   <button class="btn ghost wide" style="margin-top:10px;" onclick="closeM('mdPunch')">닫기</button>
 </div></div>
@@ -586,6 +587,14 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <button class="btn ghost" style="flex:1;padding:9px;font-size:13px;" onclick="rptReject()">반려</button>
     </div>
   </div>
+  <div id="recOtBox" style="display:none;margin-top:10px;padding:11px 12px;border-radius:10px;background:#EEF2FF;border:1.5px solid #4F46E5;">
+    <div style="font-weight:800;font-size:13.5px;margin-bottom:4px;">🌙 야근 입력이 있습니다</div>
+    <div id="recOtTxt" style="font-size:13px;line-height:1.6;"></div>
+    <div class="row" style="margin-top:9px;">
+      <button class="btn p" style="flex:1;padding:9px;font-size:13px;" onclick="otAccept()">인정</button>
+      <button class="btn ghost" style="flex:1;padding:9px;font-size:13px;" onclick="otReject()">반려</button>
+    </div>
+  </div>
   <button class="btn red wide" style="margin-top:8px;" onclick="recAbsent()">🚫 결근 처리</button>
   <button class="btn ghost wide" id="btnOtClear" style="margin-top:8px;display:none;" onclick="clearOt()">🌙 야근 기록 지우기 (출퇴근 기록은 유지)</button>
   <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. [결근 처리]를 누르면 그날은 결근으로 기록됩니다(자동 출퇴근 직원도 그날 자동입력이 꺼짐). 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
@@ -593,6 +602,24 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <button class="btn p" style="flex:1;" onclick="saveRec()">저장</button>
     <button class="btn ghost" style="flex:1;" onclick="closeM('mdRec')">취소</button>
   </div>
+</div></div>
+
+<!-- 야근 입력 (직원 본인) -->
+<div class="modal-bg" id="mdOtRpt"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdOtRpt')">‹</button>
+  <h3>🌙 야근 입력</h3>
+  <div class="muted" id="otrSub"></div>
+  <label class="f">야근을 마친 시각</label>
+  <input type="time" id="otrEnd" oninput="otrCalc()">
+  <label class="f">무슨 일을 하셨나요? (선택)</label>
+  <input type="text" id="otrMemo" placeholder="예: 창고 재고 정리" maxlength="60">
+  <div id="otrCalc" style="margin-top:10px;font-weight:800;text-align:center;"></div>
+  <div class="muted" style="margin-top:8px;">퇴근시간 이후 일한 시간만 야근으로 잡힙니다. 관리자가 확인한 뒤 야근 현황판에 반영됩니다.</div>
+  <div class="row" style="margin-top:16px;">
+    <button class="btn p" style="flex:1;" onclick="saveOtRpt()">저장</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdOtRpt')">닫기</button>
+  </div>
+  <button class="btn red wide" id="btnOtRptDel" style="margin-top:8px;display:none;" onclick="delOtRpt()">야근 입력 지우기</button>
 </div></div>
 
 <!-- 늦게 찍었을 때: 실제 도착 시각 신고 (직원 본인) -->
@@ -617,7 +644,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_112230'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_120726'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -738,6 +765,11 @@ function openPunch(id){
     else if(r&&r.in){ bu.style.display='block'; bu.textContent=`↩️ 잘못 눌렀어요 — 출근(${r.in}) 취소`; }
     else bu.style.display='none';
   }
+  const bot=document.getElementById('btnOtRpt');
+  if(bot){ // 출근 기록이 있으면 야근을 직접 입력할 수 있다
+    if(r&&r.in){ bot.style.display='block'; bot.textContent=r.otE?`🌙 야근 수정 (${r.otE}까지)`:'🌙 야근 입력하기'; }
+    else bot.style.display='none';
+  }
   tick(); openM('mdPunch');
 }
 async function doPunch(kind){
@@ -784,6 +816,8 @@ async function doPunch(kind){
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
   if(kind==='in'&&window._askLate){ const pid=punchEmpId, pt=window._askLate; window._askLate=null;
     setTimeout(()=>lateRptOpen(pid,ds,pt),400); }                // 늦게 찍었으면 실제 도착시각 물어보기
+  if(kind==='out'&&r.otOut&&!r.otE){ const pid=punchEmpId;
+    setTimeout(()=>otRptOpen(pid,ds),400); }                     // 야근으로 잡혔으면 바로 입력받기
   showPunchPop(kind,punchEmpId); // 도시락 +1(출근 시) + 이름 부르는 날씨 인사말
 }
 function undoPunch(){ // 잘못 누른 출퇴근 되돌리기 (오늘 기록, 마지막 단계부터)
@@ -823,7 +857,9 @@ function workedMin(e,r){
 const OT_MIN=30; // 퇴근시간보다 30분 이상 늦게 퇴근을 누르면 야근으로 기록
 function otMin(e,r,d){
   if(!r||!r.in)return 0;
-  const outs=[toMin(r.out),toMin(r.otOut)].filter(x=>x!=null);
+  const cand=[toMin(r.out),toMin(r.otOut)];
+  if(r.otE&&r.otOk!==0)cand.push(toMin(r.otE));   // 직원이 직접 입력한 야근 (반려된 건 제외)
+  const outs=cand.filter(x=>x!=null);
   if(!outs.length)return 0;
   return Math.max(0,Math.max(...outs)-toMin(e.schedule.end));
 }
@@ -1479,6 +1515,18 @@ function openRec(id,ds){
   document.getElementById('recIn').value=r.in||'';
   document.getElementById('recOut').value=r.out||'';
   document.getElementById('btnOtClear').style.display=r.otOut?'block':'none';
+  const ob=document.getElementById('recOtBox');
+  if(r.otE){
+    ob.style.display='block';
+    const m=toMin(r.otE)-toMin(emp(id).schedule.end);
+    document.getElementById('recOtTxt').innerHTML=
+      `본인 입력: <b>${r.otE}</b>까지 — 야근 <b>${fmtHM(Math.max(0,m))}</b>`
+      +(r.otMemo?`<br>내용: ${r.otMemo}`:'')
+      +(r.otOut?`<br><span class="muted">자동 포착: ${r.otOut}</span>`:'')
+      +(r.otOk===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
+        :r.otOk===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨 (야근에서 제외)</span>'
+        :'<br><span style="color:#D95B23;font-weight:700;">⏳ 확인 대기</span>');
+  } else ob.style.display='none';
   const box=document.getElementById('recRptBox');
   if(r.rin){
     box.style.display='block';
@@ -1892,7 +1940,8 @@ function renderOtBoard(y,m){
       const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
       if(!r||!r.in)continue;
       if(!isWorkday(e,d)){ const wm=workedMin(e,{in:r.in,out:r.otOut||r.out}); if(wm>0)logs.push({e,ds,d,min:wm,out:r.otOut||r.out,hol:true}); continue; }
-      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:r.otOut||r.out});
+      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:(r.otE&&r.otOk!==0)?r.otE:(r.otOut||r.out),
+        wait:!!(r.otE&&r.otOk==null), memo:r.otMemo||''});
     }
   });
   logs.forEach(l=>{ const p=per[l.e.id]=per[l.e.id]||{e:l.e,min:0,cnt:0,last:''}; p.min+=l.min; p.cnt++; if(l.ds>p.last)p.last=l.ds; });
@@ -1907,11 +1956,12 @@ function renderOtBoard(y,m){
     h+='</div><div class="card"><div style="font-weight:800;margin-bottom:2px;">야근 기록</div>';
     logs.sort((a,b)=>a.ds<b.ds?1:a.ds>b.ds?-1:b.min-a.min).forEach(l=>{
       h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}><div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${l.e.name}
-        <span class="muted">${l.hol?'휴일근무':'퇴근'} ${l.out||''}</span></div><div class="plus">+${fmtHM(l.min)}</div></div>`;
+        <span class="muted">${l.hol?'휴일근무':'퇴근'} ${l.out||''}</span>${l.wait?' <span class="tag man">⏳ 확인 대기</span>':''}
+        ${l.memo?`<div class="muted" style="font-size:11.5px;">${l.memo}</div>`:''}</div><div class="plus">+${fmtHM(l.min)}</div></div>`;
     });
     h+='</div>';
   }
-  h+=`<div class="muted" style="margin:0 4px 6px;">퇴근시간보다 ${OT_MIN}분 이상 늦게 퇴근을 누르면 자동으로 잡힙니다. 급여는 정시 기준 그대로이며, 기록을 누르면 고치거나 지울 수 있어요.</div>`;
+  h+=`<div class="muted" style="margin:0 4px 6px;">직원이 출퇴근 화면에서 [🌙 야근 입력하기]로 직접 적을 수 있고, 퇴근시간보다 ${OT_MIN}분 이상 늦게 퇴근을 누르면 자동으로도 잡힙니다. <b>⏳ 확인 대기</b>는 아직 인정하지 않은 건으로, 기록을 눌러 인정·반려하세요. 급여는 정시 기준 그대로입니다.</div>`;
   return h;
 }
 
@@ -2455,6 +2505,64 @@ function handleEvents(events){
     const keep={}; keys.slice(-150).forEach(k=>keep[k]=events[k]);
     cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
   }
+}
+/* ================== 야근 직접 입력 (직원) ==================
+   직원이 본인 야근 종료 시각을 적고, 관리자가 인정/반려한다.
+   퇴근을 늦게 눌러 자동으로 잡힌 시각(r.otOut)이 있으면 기본값으로 채워 준다.
+   기록 항목: r.otE(야근 끝난 시각) r.otMemo(사유) r.otOk(1=인정, 0=반려, 없음=확인 대기) */
+function otRptOpen(empId,ds){
+  empId=empId||punchEmpId; ds=ds||todayStr();
+  const e=emp(empId), r=recOf(ds,empId);
+  if(!e)return;
+  if(!r||!r.in){ toast('출근 기록이 있어야 야근을 입력할 수 있습니다'); return; }
+  window._otEmp=empId; window._otDs=ds;
+  document.getElementById('otrSub').innerHTML=
+    `${e.name}님 · ${ds}<br>근무 종료는 <b>${e.schedule.end}</b> 입니다. 그 이후 일한 시간이 야근입니다.`;
+  document.getElementById('otrEnd').value=r.otE||r.otOut||'';
+  document.getElementById('otrMemo').value=r.otMemo||'';
+  document.getElementById('btnOtRptDel').style.display=r.otE?'block':'none';
+  otrCalc();
+  openM('mdOtRpt');
+}
+function otrCalc(){
+  const e=emp(window._otEmp); const v=document.getElementById('otrEnd').value;
+  const box=document.getElementById('otrCalc'); if(!box)return;
+  if(!e||!v){ box.innerHTML=''; return; }
+  const m=toMin(v)-toMin(e.schedule.end);
+  box.innerHTML=m>0?`<span style="color:var(--purple);">야근 ${fmtHM(m)}</span>`
+                   :'<span class="muted" style="font-weight:400;">퇴근시간 이전이라 야근이 아닙니다</span>';
+}
+function saveOtRpt(){
+  const empId=window._otEmp, ds=window._otDs, e=emp(empId);
+  const v=document.getElementById('otrEnd').value;
+  const memo=document.getElementById('otrMemo').value.trim();
+  if(!v){ toast('야근을 마친 시각을 골라 주세요'); return; }
+  if(toMin(v)<=toMin(e.schedule.end)){ toast('퇴근시간 이후 시각을 골라 주세요'); return; }
+  const r=(DB.records[ds]||{})[empId]; if(!r){ closeM('mdOtRpt'); return; }
+  r.otE=v; if(memo)r.otMemo=memo; else delete r.otMemo;
+  delete r.otOk;                                  // 다시 입력하면 확인 대기로
+  DB.records[ds][empId]=r; save(); queueRec(ds,empId);
+  closeM('mdOtRpt'); renderKiosk();
+  toast(`야근 ${fmtHM(toMin(v)-toMin(e.schedule.end))} 입력했습니다 — 관리자 확인 후 반영됩니다`);
+}
+function delOtRpt(){
+  const empId=window._otEmp, ds=window._otDs;
+  const r=(DB.records[ds]||{})[empId]; if(!r)return;
+  if(!confirm('야근 입력을 지울까요?'))return;
+  delete r.otE; delete r.otMemo; delete r.otOk;
+  DB.records[ds][empId]=r; save(); queueRec(ds,empId);
+  closeM('mdOtRpt'); renderKiosk(); toast('야근 입력을 지웠습니다');
+}
+/* ── 관리자: 야근 확인 ── */
+function otAccept(){
+  const r=recOf(recDate,recEmpId); if(!r||!r.otE)return;
+  r.otOk=1; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
+  openRec(recEmpId,recDate); recRerender(); toast('야근을 인정했습니다');
+}
+function otReject(){
+  const r=recOf(recDate,recEmpId); if(!r||!r.otE)return;
+  r.otOk=0; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
+  openRec(recEmpId,recDate); recRerender(); toast('야근 입력을 반려했습니다');
 }
 /* ================== 출근 유예 · 지각 신고 ==================
    출근시간 +GRACE_MIN 까지는 정시 출근으로 인정(도착해서 짐 놓고 찍는 시간).
