@@ -256,6 +256,11 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
 .arrow{color:#C9C4DB;font-size:18px;}
 .footer-logo{text-align:center;margin:26px 0 10px;opacity:.85;}
 .footer-logo img{height:26px;}
+.failbar{margin:0 14px 10px;background:#FDECEC;border:1.5px solid var(--red);border-radius:12px;
+  padding:10px 12px;font-size:12.5px;font-weight:700;color:#A32020;line-height:1.5;}
+.failbar button{margin:7px 6px 0 0;padding:6px 12px;font-size:12px;font-weight:800;border:none;border-radius:8px;
+  background:var(--red);color:#fff;}
+.failbar button.g{background:#fff;color:#A32020;border:1.2px solid var(--red);}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;background:var(--purple-dark);color:#fff;padding:12px 22px;border-radius:30px;font-size:14px;font-weight:700;z-index:200;opacity:0;pointer-events:none;transition:.25s;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.25);}
 .toast.on{opacity:1;bottom:110px;}
 .day-chk{display:flex;gap:6px;margin-top:4px;}
@@ -283,6 +288,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div class="clock"><div class="t" id="clockT">--:--:--</div><div class="d" id="clockD"></div></div>
   </div>
   <div class="ybar"></div>
+  <div id="failBar"></div>
 
   <!-- ============ 출퇴근(키오스크) ============ -->
   <div class="page on" id="pg-kiosk">
@@ -620,7 +626,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </select>
   <label class="f">시작일</label>
   <input type="date" id="lqFrom" onchange="lqCalc()">
-  <div class="muted" id="lqPastWarn" style="display:none;color:#C0392B;font-size:12px;margin-top:4px;">지난 날짜는 신청할 수 없습니다. 관리자에게 말씀해 주세요.</div>
+  <div class="muted" id="lqPastWarn" style="display:none;color:#C0392B;font-size:12px;margin-top:4px;">이번 달 날짜까지만 신청할 수 있습니다. 더 지난 날짜는 관리자에게 말씀해 주세요.</div>
   <label class="f">종료일 <span class="muted" style="font-weight:400;">(하루만 쓰면 비워 두세요)</span></label>
   <input type="date" id="lqTo" onchange="lqCalc()">
   <label class="f">사유 (선택)</label>
@@ -673,7 +679,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_191454'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_195327'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -702,7 +708,46 @@ function seed(){
   };
 }
 function load(){ try{DB=JSON.parse(localStorage.getItem(LS))||seed();}catch(e){DB=seed();} DB.settings.taxEmail=DB.settings.taxEmail||''; save(); }
-function save(){ localStorage.setItem(LS,JSON.stringify(DB)); try{autoBackup();}catch(e){} }
+/* ── 서버에 저장되지 못한 내용 알림 ──
+   예전에는 2.2초 토스트 하나뿐이었고 그것도 페이지당 1번이라, 무엇이 안 갔는지 알 수 없었다. */
+function failNote(kind,who,when,why){
+  DB.sendFail=DB.sendFail||[];
+  const k=kind+'|'+who+'|'+when;
+  if(!DB.sendFail.some(x=>x.k===k)){
+    DB.sendFail.push({k,kind,who,when,why:why||'',ts:Date.now()});
+    window._pendWarned=0; window._lvWarned=0;   // 새로운 실패다 → 한 번 더 알린다
+  }
+  if(DB.sendFail.length>30)DB.sendFail=DB.sendFail.slice(-30);
+  renderFailBar();
+}
+function renderFailBar(){
+  const el=document.getElementById('failBar'); if(!el)return;
+  const f=DB.sendFail||[];
+  if(!f.length){ el.innerHTML=''; return; }
+  const list=f.slice(-6).map(x=>`${esc(x.kind)} ${esc(x.who)} ${esc(x.when)}`).join(' / ');
+  el.innerHTML=`<div class="failbar">⚠️ 서버에 저장되지 못한 내용 ${f.length}건<br>${esc(list)}${f.length>6?' 외':''}
+    <br><button onclick="failRetry()">다시 보내기</button><button class="g" onclick="failClear()">알림 지우기</button></div>`;
+}
+function failRetry(){
+  DB.sendFail=[]; window._pendWarned=0; window._lvWarned=0;
+  // 멈춰 둔 항목을 풀고 대기열에 다시 태운다
+  const it=leavesDB().items;
+  Object.keys(it).forEach(id=>{ if(it[id]&&it[id].sendErr){ delete it[id].sendErr; queueLeave(id); } });
+  save(); renderFailBar();
+  if(cloudOn()){ cloudSync(); toast('다시 보내는 중입니다'); } else toast('인터넷에 연결되면 자동으로 보냅니다'); }
+function failClear(){ if(!confirm('이 알림만 지울까요?\n(저장되지 못한 내용 자체는 그대로 남습니다)'))return;
+  DB.sendFail=[]; save(); renderFailBar(); }
+function lsSave(){ // 저장 실패(용량 초과·사생활 보호 모드)가 작업을 통째로 죽이지 않게
+  try{ localStorage.setItem(LS,JSON.stringify(DB)); return true; }
+  catch(e){
+    if(!window._lsWarned){ window._lsWarned=true;
+      try{ toast('⚠️ 이 기기에 저장할 공간이 없습니다. 관리자에게 알려 주세요'); }catch(_){}
+      console.warn('localStorage 저장 실패',e);
+    }
+    return false;
+  }
+}
+function save(){ lsSave(); try{autoBackup();}catch(e){} }
 function emp(id){ return DB.employees.find(e=>e.id===id); }
 function activeEmps(d){ // 재직자 (기준일)
   const ds=d||todayStr();
@@ -924,6 +969,11 @@ function leaveAnyOn(ds,empId){ // 대기 중인 신청까지 포함해 찾기 (�
   const it=leavesDB().items;
   for(const k in it){ const x=it[k]; if(x&&!x.del&&x.st!=='x'&&x.e===empId&&x.d===ds)return x; }
   return null;
+}
+function leaveSendErr(empId){ // 서버에 올라가지 못한 신청 — 화면에서 사라지면 안 된다
+  return Object.entries(leavesDB().items)
+    .filter(([id,x])=>x&&!x.del&&x.sendErr&&(!empId||x.e===empId))
+    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
 }
 function leaveWaiting(empId){ // 승인 대기 목록
   return Object.entries(leavesDB().items)
@@ -1659,7 +1709,7 @@ function saveRec(){
   const i=document.getElementById('recIn').value,o=document.getElementById('recOut').value;
   // 출근 없이 퇴근만 있는 기록은 만들지 않는다 — 앱에서도 '출근 안 함'으로 읽히고,
   // 클라우드 보안규칙(출근 또는 결근 표식 필수)에서도 영구 거부된다.
-  if(!i&&o){ toast('출근 시각도 함께 넣어 주세요 (퇴근만 저장할 수 없습니다)'); return; }
+  if(!i&&o){ toast('출근 시각도 함께 넣어 주세요. 결근으로 정리하려면 두 칸을 모두 비우고 저장하세요'); return; }
   DB.records[recDate]=DB.records[recDate]||{};
   if(!i&&!o){
     // 빈 값 저장 = 결근 처리. 삭제 대신 표식을 남긴다.
@@ -2002,38 +2052,132 @@ function saveLeave(){
   if(!e||!from){toast('직원과 날짜를 골라 주세요');return;}
   if(to<from){toast('종료일이 시작일보다 빠릅니다');return;}
   if(t!=='full'&&to!==from){toast('반차는 하루씩 등록해 주세요');return;}
-  const L=leavesDB(), add={}, skip=[];
+  const L=leavesDB(), add={}, skip=[], repl=[];
   for(let d=new Date(from+'T00:00:00');fmtD(d)<=to;d.setDate(d.getDate()+1)){
     const ds=fmtD(d);
     if(!isWorkday(e,d)){ if(from===to)skip.push(ds+'(휴무일)'); continue; }
-    if(leaveOn(ds,eid)){ skip.push(ds+'(이미 등록)'); continue; }
+    const dup=leaveAnyOn(ds,eid);               // 확정뿐 아니라 '승인 대기' 신청도 중복으로 본다
+    if(dup){
+      if(dup.st==='w'&&dup.t!==t){              // 대기 중인 신청과 종류가 다르다(반차↔종일) → 바꿔 준다
+        dup.st='x'; dup.ts=Date.now(); queueLeave(dup.id); repl.push(ds);
+      } else { skip.push(ds+(dup.st==='w'?`(이미 ${LEAVE_NM[dup.t]}로 신청됨 — 승인하면 됩니다)`:'(이미 등록)')); continue; }
+    }
     const id='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
     add[id]={e:eid,d:ds,t,memo,ts:Date.now()};
   }
   const n=Object.keys(add).length;
   if(!n){toast(skip.length?'등록할 수 있는 근무일이 없습니다: '+skip.join(', '):'등록할 근무일이 없습니다');return;}
   Object.assign(L.items,add); save();
-  if(cloudOn())cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)}).catch(()=>{});
+  Object.keys(add).forEach(id=>queueLeave(id,true));   // 던져놓기 금지 — 실패하면 직원이 결근으로 잡힌다
   closeM('mdLeave'); leaveYear=+from.slice(0,4); renderLeave();
-  toast(`${e.name}님 ${LEAVE_NM[t]} ${n}건 등록`+(skip.length?` (제외 ${skip.length}건)`:''));
+  toast(`${e.name}님 ${LEAVE_NM[t]} ${n}건 등록`
+    +(repl.length?` (신청 ${repl.length}건을 이 내용으로 바꿨습니다)`:'')
+    +(skip.length?` (제외 ${skip.length}건: ${skip.join(', ')})`:''));
 }
 function delLeave(id){
   if(!canManage())return;
   const x=leavesDB().items[id]; if(!x)return;
   if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]}을(를) 삭제할까요?`))return;
-  x.del=true; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave(); toast('삭제했습니다');
+  x.del=true; x.ts=Date.now(); save(); queueLeave(id); renderLeave(); toast('삭제했습니다');
+}
+/* 연차 전송 대기열 — 출퇴근 기록(DB.pending)과 같은 방식.
+   예전에는 던져 놓고 결과를 무시했다. 그래서 전송이 실패하면
+     · 신청: 기기에만 남아 관리자에겐 영영 안 보이고, 재신청은 "이미 신청됨"으로 막히고,
+             승인이 없으니 그날은 결근으로 잡혀 급여가 깎였다.
+     · 승인/반려/삭제: 관리자 기기만 바뀌고 클라우드는 옛 상태 → 다른 기기에서 되살아났다.
+   nw:1 = 아직 서버에 한 번도 올라간 적 없는 새 신청 (거부되면 되돌릴 수 있다) */
+function lvPending(id){ return !!(DB.pendLv&&DB.pendLv.some(x=>x.id===id)); }
+function queueLeave(id,isNew){
+  if(!cloudOn())return;
+  DB.pendLv=DB.pendLv||[];
+  const old=DB.pendLv.find(x=>x.id===id);
+  if(old){ old.dirty=1; if(!isNew)old.nw=0; }   // 전송 중이었다면 끝난 뒤 새 값으로 다시
+  else DB.pendLv.push(isNew?{id,nw:1}:{id});
+  lsSave();
+  flushLeaves();
+}
+let lvBusy=false;
+async function flushLeaves(){
+  if(!cloudOn()||!DB.pendLv||!DB.pendLv.length||lvBusy)return;
+  lvBusy=true;
+  try{
+    const todo=[...DB.pendLv], keep=[], bad=[]; let okN=0, took=0;
+    for(const it of todo){
+      const x=leavesDB().items[it.id];
+      if(!x)continue;                                   // 사라진 항목 — 큐에서 제거
+      it.dirty=0;
+      try{
+        /* 보내기 직전에 그 항목만 서버에서 확인한다.
+           대기열은 클라우드를 읽기 전에 비워지므로, 병합에서 ts 를 비교해도 이미 늦다.
+           예전에는 무조건 덮어써서 ① 오프라인에 있던 옛 승인이 다른 관리자의 최신 반려를 지웠고
+           ② 응답만 끊긴 신청이 그 뒤의 관리자 승인을 '승인 대기'로 되돌렸다. */
+        const c=await cfetch('/leaves/items/'+it.id);
+        const cloudDecided=!!(c&&!c.st);                // 서버에서 이미 승인됨
+        const cloudNewer=!!(c&&(c.ts||0)>(x.ts||0));
+        // st:'w' 는 신청의 첫 상태일 뿐, 어떤 경로로도 다시 'w' 가 되지 않는다.
+        // 그래서 '승인 대기'는 이미 결정된 서버 값을 절대 덮지 않는다 (시각이 같아도).
+        const mineStale=(x.st==='w'&&c&&c.st!=='w')||(cloudNewer&&!(x.del&&!c.del))||(cloudDecided&&x.st==='w');
+        if(mineStale){
+          leavesDB().items[it.id]=c; took++; continue;  // 서버 쪽이 맞다 → 내 옛 변경을 버린다
+        }
+        await cfetch('/leaves/items/'+it.id,{method:'PUT',body:JSON.stringify(x)}); okN++;
+        if(it.dirty)keep.push(it);     // 보내는 중에 또 바뀌었다 → 새 값으로 다시
+      }catch(e){
+        it.f=(it.f||0)+1;
+        if(isRejected(e))bad.push(it);  // 규칙이 거부 — 재시도 무의미
+        else keep.push(it);            // 인터넷·과부하 문제 — 연결될 때까지 보관
+      }
+    }
+    // 보내는 동안 새로 들어온 항목은 보존
+    const seen=new Set(todo.map(x=>x.id));
+    DB.pendLv=keep.concat((DB.pendLv||[]).filter(x=>!seen.has(x.id)));
+    // 끝까지 거부된 항목: **절대 지우지 않는다.**
+    // 올라가지도 못한 새 신청은 '반려' 표시로 남겨, 같은 날 재신청 길을 열어 주면서도
+    // 신청이 있었다는 사실은 화면에 남긴다. (예전에는 delete 해서 흔적도 없이 사라졌다)
+    let undone=0;
+    bad.forEach(it=>{
+      const x=leavesDB().items[it.id]; if(!x)return;
+      const who=(emp(x.e)||{}).name||x.e;
+      if(it.nw&&x.st==='w'){ x.st='x'; x.sendErr=1; x.ts=Date.now(); undone++; }
+      else x.sendErr=1;               // 승인·반려·삭제가 거부됨 — 사람이 [다시 보내기] 누를 때까지 멈춘다
+      failNote('연차', who, x.d, '서버 거부');
+    });
+    if(okN||bad.length||took)save();   // 아무것도 안 바뀌었으면 25초마다 전체 저장하지 않는다
+    if(okN||undone||took){ try{ if(document.getElementById('pg-leave').classList.contains('on'))renderLeave(); }catch(e){} }
+    if(bad.length&&!window._lvWarned){
+      window._lvWarned=true;
+      toast(undone?`⚠️ 연차 신청 ${undone}건이 서버에서 거부되었습니다. 화면 위 빨간 띠를 봐 주세요`
+                  :'⚠️ 연차 변경이 서버에서 거부되었습니다. 화면 위 빨간 띠를 봐 주세요');
+    }
+    if((okN||took)&&DB.pendLv.length)setTimeout(flushLeaves,0);
+  } finally { lvBusy=false; }
 }
 function leavePut(path,val){ if(cloudOn())cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)}).catch(()=>{}); }
 // 클라우드 병합: 클라우드 우선, 이 기기에만 있는 항목·삭제 표식은 올림
 function leaveMergeCloud(cl){
   const L=leavesDB(), ci=(cl&&cl.items)||{}, cg=(cl&&cl.grants)||{}, upI={}, upG={};
-  Object.entries(L.items).forEach(([id,x])=>{ const c=ci[id]; if(!c||(x.del&&!c.del))upI[id]=x; });
-  L.items={...L.items,...ci,...upI};
+  /* 예전에는 클라우드가 항상 이겼다. 그래서
+       · 관리자가 승인을 누르면 25초 뒤 '승인 대기'로 되돌아가고 서버도 대기로 덮였다
+       · 반대로 오프라인에 있던 옛 변경이 다른 관리자의 최신 변경을 지웠다
+     이제 ts(변경시각)가 더 새로운 쪽이 이긴다. */
+  const items={...ci}, dropQ=[];
+  Object.entries(L.items).forEach(([id,x])=>{
+    const c=ci[id];
+    if(!c||(x.del&&!c.del)||((x.ts||0)>(c.ts||0))){
+      items[id]=x;                                  // 내 쪽이 더 새롭다(또는 클라우드에 없다)
+      if(!lvPending(id))upI[id]=x;                  // 대기열에 있으면 거기서 보낸다
+    } else if(lvPending(id)) dropQ.push(id);        // 클라우드가 더 새롭다 → 내 옛 변경은 버린다
+  });
+  L.items=items;
+  if(dropQ.length)DB.pendLv=(DB.pendLv||[]).filter(q=>!dropQ.includes(q.id));
   Object.entries(L.grants).forEach(([y,m])=>Object.entries(m||{}).forEach(([id,v])=>{ if(!(cg[y]&&cg[y][id]!=null))(upG[y]=upG[y]||{})[id]=v; }));
   const g=JSON.parse(JSON.stringify(cg)); Object.entries(upG).forEach(([y,m])=>{ g[y]={...(g[y]||{}),...m}; });
   L.grants=g;
   if(cloudCfg().role!=='admin')return;                    // 올리기는 관리자 기기만
-  if(Object.keys(upI).length)cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(upI)}).catch(()=>{});
+  // 대기열로 보낸다. 예전에는 여기서 바로 PATCH 를 날리고 결과를 버려서,
+  // 서버가 거부한 항목을 25초마다 조용히 영원히 재시도했다(아무도 모른 채).
+  // sendErr 가 붙은 항목은 사람이 [다시 보내기]를 누를 때까지 멈춘다.
+  Object.keys(upI).forEach(id=>{ if(!(upI[id]&&upI[id].sendErr))queueLeave(id); });
   Object.entries(upG).forEach(([y,m])=>cfetch('/leaves/grants/'+y,{method:'PATCH',body:JSON.stringify(m)}).catch(()=>{}));
 }
 
@@ -2048,8 +2192,10 @@ function settleOne(e,y,m){
     const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
     if(!r)continue;
     if(r.in){ ot+=isWorkday(e,d)?otMin(e,r):workedMin(e,{in:r.in,out:r.otOut||r.out}); }
-    if(r.rin&&r.rok==null)wait++;                       // 지각 정정 신고 대기
-    if(r.otE&&r.otOk==null)wait++;                      // 야근 입력 대기
+    // r.in 가드: 결근 처리된 날에 남은 신고·야근 입력은 세지 않는다.
+    // (야근 현황판은 출근 기록이 없으면 보여 주지 않으므로, 세면 출처를 못 찾는 유령이 된다)
+    if(r.in&&r.rin&&r.rok==null)wait++;                 // 지각 정정 신고 대기
+    if(r.in&&r.otE&&r.otOk==null)wait++;                // 야근 입력 대기
     if(r.far!=null||r.farO!=null)farCnt++;              // 회사 밖에서 찍음
   }
   const Y=y, grant=leaveGrant(e,Y), used=leaveUsed(e,Y);
@@ -2500,36 +2646,59 @@ async function cloudPushRoster(editedId){
 function queueRec(date,empId){
   if(!cloudOn())return;
   DB.pending=DB.pending||[];
-  if(!DB.pending.some(x=>x.d===date&&x.e===empId))DB.pending.push({d:date,e:empId});
-  localStorage.setItem(LS,JSON.stringify(DB));
+  const old=DB.pending.find(x=>x.d===date&&x.e===empId);
+  // 이미 큐에 있으면 dirty 로 표시한다. 전송이 진행 중이었다면 그 전송은 옛 값을 보내고 있으므로,
+  // 끝난 뒤 새 값으로 한 번 더 보내야 한다. 예전에는 이 표시가 없어서
+  // "출근 전송 중에 퇴근을 누르면 퇴근이 큐에도 서버에도 안 남는" 유실이 있었다.
+  if(old)old.dirty=1; else DB.pending.push({d:date,e:empId});
+  lsSave();
   flushPending();
 }
-const PEND_MAX=5;            // 한 기록을 최대 몇 번까지 다시 보내볼지
+/* 재전송을 포기해도 되는 실패인가?
+   · 네트워크 실패(인터넷 없음/끊김) → 절대 포기하지 않는다. 연결되면 그대로 올라간다.
+   · HTTP 4xx (보안규칙이 모양을 거부) → 몇 번을 보내도 결과가 같다. 포기하고 사람에게 알린다.
+   횟수로 끊으면 "엘리베이터에 2분 있었더니 출근 기록이 사라졌다"가 된다. */
+/* 다시 보내도 결과가 같은 실패만 '거부'로 본다.
+   408 타임아웃 · 423 잠김 · 425 · 429 과부하 · 402/407/511 회사 프록시·캡티브 포털 은
+   잠깐의 사정이다. 이걸 거부로 넣으면 지하철 한 번에 출근 기록·연차 신청이 사라진다. */
+const REJ_SOFT=/^HTTP (402|407|408|409|423|425|429|444|499|503|511)/;
+function isRejected(err){
+  const m=String((err&&err.message)||'');
+  return /^HTTP 4\d\d/.test(m)&&!REJ_SOFT.test(m);
+}
 let pendBusy=false;
 async function flushPending(){
   if(!cloudOn()||!DB.pending||!DB.pending.length||pendBusy)return;
   pendBusy=true;
   try{
-    const todo=[...DB.pending], keep=[]; let gaveUp=0;
+    const todo=[...DB.pending], keep=[]; let gaveUp=0, okN=0;
     for(const it of todo){
       const rec=(DB.records[it.d]||{})[it.e]||null;
+      it.dirty=0;
       try{
         await cfetch('/recs/'+it.d,{method:'PATCH',body:JSON.stringify({[it.e]:rec})});
+        okN++;
+        if(it.dirty)keep.push(it);       // 보내는 중에 또 바뀌었다 → 새 값으로 다시 보낸다
       }catch(e){
         // 한 건이 실패해도 **멈추지 않는다**. 예전에는 break 라서 영구 실패 항목 하나가
         // 그 기기의 이후 기록을 전부 막았다(보안규칙을 켜는 순간 터질 구조였다).
         it.f=(it.f||0)+1;
-        if(it.f<PEND_MAX)keep.push(it); else gaveUp++;
+        if(isRejected(e)){
+          gaveUp++;                      // 다시 보내도 같은 결과 — 사람에게 알린다
+          failNote('근태', ((emp(it.e)||{}).name)||it.e, it.d, String(e.message||''));
+        } else keep.push(it);            // 인터넷·과부하 문제 — 연결될 때까지 보관
       }
     }
     // 보내는 동안 새로 들어온 항목은 보존한다
     const seen=new Set(todo.map(x=>x.d+'|'+x.e));
     DB.pending=keep.concat((DB.pending||[]).filter(x=>!seen.has(x.d+'|'+x.e)));
-    localStorage.setItem(LS,JSON.stringify(DB));
+    if(okN||gaveUp)lsSave();             // 아무것도 못 보냈으면 25초마다 전체 저장하지 않는다
     if(gaveUp&&!window._pendWarned){
       window._pendWarned=true;
-      toast(`⚠️ 기록 ${gaveUp}건을 서버에 보내지 못했습니다. 관리자에게 알려 주세요`);
+      toast(`⚠️ 기록 ${gaveUp}건이 서버에서 거부되었습니다. 화면 위 빨간 띠를 봐 주세요`);
     }
+    // 한 번 돌고 남아 있으면 바로 한 번 더 — 전송 중에 밀린 항목이 25초를 기다리지 않게
+    if(okN&&DB.pending.length)setTimeout(flushPending,0);
   } finally { pendBusy=false; }
 }
 let syncBusy=false, notifyCache=null;
@@ -2537,14 +2706,19 @@ async function cloudSync(){
   if(!cloudOn()||syncBusy)return; syncBusy=true;
   try{
     await flushPending();
+    await flushLeaves();          // 밀린 연차 신청·승인도 함께 재전송
     const room=await cfetch('')||{};
     { // 기록 병합: 클라우드 우선, 이 기기에만 있는 기록은 보존 후 클라우드로 올림 (기기 간 통일)
-      const cr=room.recs||{}; let localOnly=0;
+      const cr=room.recs||{}, up={}; let localOnly=0;
+      const pq=new Set((DB.pending||[]).map(x=>x.d+'|'+x.e));
       Object.entries(DB.records||{}).forEach(([d,em])=>Object.entries(em||{}).forEach(([id,r])=>{
-        if(!(cr[d]&&cr[d][id]!==undefined)){ (cr[d]=cr[d]||{})[id]=r; localOnly++; }
+        if(!(cr[d]&&cr[d][id]!==undefined)){ (cr[d]=cr[d]||{})[id]=r; (up[d]=up[d]||{})[id]=r; localOnly++; }
+        else if(pq.has(d+'|'+id)) cr[d][id]=r;   // 아직 못 보낸 내 수정 — 클라우드 옛 값이 덮지 못한다
       }));
       DB.records=cr;
-      if(localOnly>0){ try{ await cfetch('/recs',{method:'PUT',body:JSON.stringify(cr)}); }catch(e){} }
+      // 날짜별 PATCH. 통째 PUT(/recs)은 보안규칙에서 거부되고, 그 사이 다른 기기가 올린
+      // 기록을 날릴 수도 있다. 예전에는 통째 PUT 이라 규칙을 켜는 순간 이 구제가 죽었다.
+      for(const d in up){ try{ await cfetch('/recs/'+d,{method:'PATCH',body:JSON.stringify(up[d])}); }catch(e){} }
     }
     window._geo=room.geo||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준)
     leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
@@ -2592,7 +2766,7 @@ async function cloudSync(){
     lunchPublish(room);
     lateCheck(room);
     DB.settings.lastSync=new Date().toLocaleTimeString('ko-KR');
-    localStorage.setItem(LS,JSON.stringify(DB));
+    lsSave();
     renderCloudStatus();
     if(document.getElementById('pg-kiosk').classList.contains('on'))renderKiosk();
     const _ae=document.activeElement, _typing=_ae&&['INPUT','SELECT','TEXTAREA'].includes(_ae.tagName);
@@ -2743,9 +2917,21 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (�
     wait.forEach(x=>{
       s+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
         <div>${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
-        <span class="tag man" style="flex-shrink:0;">대기</span></div>`;
+        <span class="tag ${lvPending(x.id)?'hol':'man'}" style="flex-shrink:0;">${lvPending(x.id)?'전송 중':'대기'}</span></div>`;
     });
     s+='<div class="muted" style="margin-top:8px;font-size:12px;">관리자가 승인하면 확정됩니다. 승인 전까지는 그날이 결근으로 잡히니, 급하면 관리자에게 알려 주세요.</div></div>';
+  }
+
+  const serr=leaveSendErr(id);
+  if(serr.length){
+    s+=`<div class="card" style="background:#FDECEC;border:1.5px solid var(--red);">
+      <div style="font-weight:800;margin-bottom:6px;color:#A32020;">⚠️ 서버에 전달되지 못한 신청 ${serr.length}건</div>`;
+    serr.forEach(x=>{
+      s+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
+        <div>${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
+        <span class="tag abs" style="flex-shrink:0;">전송 실패</span></div>`;
+    });
+    s+='<div class="muted" style="margin-top:8px;font-size:12px;">이 신청은 관리자에게 전달되지 않았습니다. 같은 날로 다시 신청하시거나, 관리자에게 직접 말씀해 주세요.</div></div>';
   }
 
   const items=leaveItemsOf(Y,id);
@@ -2779,6 +2965,7 @@ function openLvReq(){
   document.getElementById('lqMemo').value='';
   lqCalc(); openM('mdLvReq');
 }
+function monthFloor(){ const n=new Date(); return fmtD(new Date(n.getFullYear(),n.getMonth(),1)); }
 function lqDays(){ // 신청 대상 근무일 목록
   const e=emp(window._lqEmp); if(!e)return [];
   const from=document.getElementById('lqFrom').value;
@@ -2786,7 +2973,10 @@ function lqDays(){ // 신청 대상 근무일 목록
   const t=document.getElementById('lqType').value;
   if(!from||to<from)return [];
   if(t!=='full'&&to!==from)return [];
-  if(from<todayStr())return [];      // 지난 날짜 신청 금지 — 과거 결근을 사후에 덮는 것을 막는다
+  // 지난 날짜는 '이번 달 안'까지만 허용한다.
+  // 완전 금지로 두면, 신청이 전송 거부된 뒤 그 날이 지나면 직원에게 다시 신청할 길이 없다
+  // (그 하루가 결근 1일 + 주휴 1주로 깎인다). 승인은 여전히 관리자가 한다.
+  if(from<monthFloor())return [];
   const out=[];
   for(let d=new Date(from+'T00:00:00');fmtD(d)<=to;d.setDate(d.getDate()+1)){
     const ds=fmtD(d);
@@ -2801,8 +2991,8 @@ function lqCalc(){
   const e=emp(window._lqEmp); const t=document.getElementById('lqType').value;
   const days=lqDays();
   const pw=document.getElementById('lqPastWarn');
-  if(pw)pw.style.display=(document.getElementById('lqFrom').value<todayStr())?'block':'none';
-  if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (지난 날짜·휴무일·이미 신청한 날 제외)</span>'; return; }
+  if(pw)pw.style.display=(document.getElementById('lqFrom').value<monthFloor())?'block':'none';
+  if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (지난달·휴무일·이미 신청한 날 제외)</span>'; return; }
   const use=days.length*(t==='full'?1:0.5);
   const Y=+days[0].slice(0,4), rest=leaveGrant(e,Y)-leaveUsed(e,Y);
   box.innerHTML=`${days.length}일 신청 · <span style="color:var(--purple);">${String(use).replace(/\.0$/,'')}일 차감</span>`
@@ -2814,7 +3004,7 @@ function saveLvReq(){
   const t=document.getElementById('lqType').value;
   const memo=document.getElementById('lqMemo').value.trim();
   const days=lqDays();
-  if(document.getElementById('lqFrom').value<todayStr()){ toast('지난 날짜는 신청할 수 없습니다'); return; }
+  if(document.getElementById('lqFrom').value<monthFloor()){ toast('지난달 날짜는 신청할 수 없습니다. 관리자에게 말씀해 주세요'); return; }
   if(!days.length){ toast('신청할 근무일이 없습니다'); return; }
   const add={};
   days.forEach(ds=>{
@@ -2822,58 +3012,82 @@ function saveLvReq(){
     add[id]={e:e.id,d:ds,t,memo,ts:Date.now(),st:'w'};
   });
   Object.assign(leavesDB().items,add); save();
+  Object.keys(add).forEach(id=>queueLeave(id,true));   // 실패해도 자동 재전송 — 조용히 사라지지 않는다
   closeM('mdLvReq'); leaveYear=+days[0].slice(0,4); renderLeave();
-  if(cloudOn()){
-    cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)})
-      .then(()=>toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`))
-      .catch(()=>toast('⚠️ 인터넷이 안 되어 관리자에게 전달되지 않았습니다. 연결 후 다시 신청해 주세요'));
-  } else toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다`);
+  toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`);
 }
 /* ── 관리자: 승인 / 반려 ── */
 function lvApprove(id){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const x=leavesDB().items[id]; if(!x)return;
-  delete x.st; x.ts=Date.now(); save(); renderLeave();
   const nm=(emp(x.e)||{}).name||'';
-  if(cloudOn())cfetch('/leaves/items/'+id,{method:'PUT',body:JSON.stringify(x)})
-    .then(()=>toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`))
-    .catch(()=>toast('⚠️ 인터넷이 안 되어 승인이 저장되지 않았습니다. 다시 시도해 주세요'));
-  else toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
+  // 서버가 이 항목을 거부한 상태면, 또 눌러도 서버에는 안 올라간다. 그 사실을 바로 말해 준다.
+  // (예전에는 '승인했습니다' 토스트만 떠서 왜 계속 대기로 돌아오는지 알 수 없었다)
+  if(x.sendErr){ toast('이 항목은 서버가 거부했습니다 — 화면 위 빨간 띠의 [다시 보내기]를 눌러 주세요'); return; }
+  // 그 날에 이미 확정된 연차가 있으면 승인하지 않는다 — 승인하면 연차가 두 번 차감된다
+  const dup=leaveOn(x.d,x.e);
+  if(dup&&dup!==x){
+    x.st='x'; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
+    toast(`${nm}님 ${x.d}은 이미 ${LEAVE_NM[dup.t]}로 확정되어 있어 이 신청은 반려했습니다`);
+    return;
+  }
+  delete x.st; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
+  toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
 }
 function lvRejectOne(id){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const x=leavesDB().items[id]; if(!x)return;
   if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 신청을 반려할까요?`))return;
-  x.st='x'; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave();
+  x.st='x'; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
   toast('반려했습니다');
 }
 function lvApproveAll(){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const w=leaveWaiting(); if(!w.length)return;
   if(!confirm(`대기 중인 ${w.length}건을 모두 승인할까요?`))return;
-  w.forEach(x=>{ const it=leavesDB().items[x.id]; if(it){ delete it.st; it.ts=Date.now(); leavePut('/items/'+x.id,it); } });
-  save(); renderLeave(); toast(`${w.length}건 승인했습니다`);
+  let okc=0, dupc=0;
+  w.forEach(x=>{
+    const it=leavesDB().items[x.id]; if(!it)return;
+    const dup=leaveOn(it.d,it.e);              // 이미 확정된 연차가 있으면 반려 (이중 차감 방지)
+    if(dup&&dup!==it){ it.st='x'; dupc++; } else { delete it.st; okc++; }
+    it.ts=Date.now(); queueLeave(x.id);
+  });
+  save(); renderLeave();
+  toast(`${okc}건 승인했습니다`+(dupc?` (이미 확정된 날 ${dupc}건은 반려)`:''));
 }
 function renderLeaveWait(){
   const box=document.getElementById('leaveWaitBox'); if(!box)return;
   const mine=myEmpId();
   const w=leaveWaiting(mine||undefined);        // 직원은 본인 것만, 관리자는 전체
-  if(!w.length){ box.innerHTML=''; return; }
+  if(!w.length&&!leaveSendErr(mine||undefined).length){ box.innerHTML=''; return; }
   const admin=canManage();
-  let s=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
-    <div style="font-weight:800;margin-bottom:6px;">⏳ 승인 대기 ${w.length}건</div>`;
+  let s=w.length?`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
+    <div style="font-weight:800;margin-bottom:6px;">⏳ 승인 대기 ${w.length}건</div>`:'';
   w.forEach(x=>{
     const nm=(emp(x.e)||{}).name||'';
     s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">
       <div style="min-width:0;font-size:13.5px;"><b>${esc(nm)}</b> ${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}
       ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
+      ${lvPending(x.id)?'<span class="tag hol" style="flex-shrink:0;">전송 중</span>':''}
       ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;">
         <button class="btn p" style="padding:7px 11px;font-size:12.5px;" onclick="lvApprove('${x.id}')">승인</button>
         <button class="btn ghost" style="padding:7px 11px;font-size:12.5px;" onclick="lvRejectOne('${x.id}')">반려</button>
       </div>`:'<span class="tag man" style="flex-shrink:0;">대기</span>'}</div>`;
   });
   if(admin&&w.length>1)s+=`<button class="btn y wide" style="margin-top:10px;" onclick="lvApproveAll()">전부 승인 (${w.length}건)</button>`;
-  s+='</div>';
+  if(w.length)s+='</div>';
+  const serr=leaveSendErr(mine||undefined);
+  if(serr.length){
+    s+=`<div class="card" style="background:#FDECEC;border:1.5px solid var(--red);">
+      <div style="font-weight:800;margin-bottom:6px;color:#A32020;">⚠️ 서버에 전달되지 못한 연차 ${serr.length}건</div>`;
+    serr.forEach(x=>{
+      s+=`<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
+        <b>${esc((emp(x.e)||{}).name||'')}</b> ${x.d} ${LEAVE_NM[x.t]||''}
+        ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>`;
+    });
+    s+=`<button class="btn wide" style="margin-top:10px;background:var(--red);color:#fff;" onclick="failRetry()">다시 보내기</button>
+      <div class="muted" style="margin-top:8px;font-size:12px;">인터넷이나 클라우드 보안규칙 때문에 저장되지 않았습니다. 계속 실패하면 설정 탭의 클라우드 상태를 확인해 주세요.</div></div>`;
+  }
   box.innerHTML=s;
 }
 /* ================== 야근 직접 입력 (직원) ==================
@@ -3239,7 +3453,9 @@ async function cloudEnable(){
   try{
     const obj={}; DB.employees.forEach(e=>obj[e.id]=sanitizeEmp(e));
     await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)});
-    await cfetch('/recs',{method:'PUT',body:JSON.stringify(DB.records||{})});
+    // 날짜별 PATCH — 보안규칙이 /recs 통째 쓰기를 막는다(막지 않으면 방 기록 전체 삭제가 열린다)
+    const _recs=DB.records||{};
+    for(const d in _recs){ await cfetch('/recs/'+d,{method:'PATCH',body:JSON.stringify(_recs[d])}); }
     await cfetch('/pinH',{method:'PUT',body:JSON.stringify(pinHash(DB.settings.pin))});
     await cloudPushPriv();
   }catch(e){
@@ -3395,6 +3611,7 @@ ensureMain(); // 메인관리자 영구 지정
 moveFromHash(); adminFromHash(); joinFromHash();
 adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
 applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
+renderFailBar(); // 서버에 저장되지 못한 내용이 있으면 상단에 띠로 알린다
 // 부관리자·직원 기기는 설정에 못 들어가므로, 첫 터치 때 알림 권한을 대신 요청
 if(!isOwnerDev()&&('Notification' in window)&&Notification.permission==='default'){
   document.addEventListener('click',()=>{ try{Notification.requestPermission();}catch(e){} },{once:true});
