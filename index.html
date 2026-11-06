@@ -673,7 +673,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_183305'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_191454'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1643,19 +1643,28 @@ function fillSched(){
     document.getElementById('recOut').value=e.schedule.end;
   }
 }
+function recAbsentRec(prev){ // 결근 표식 — 출퇴근 시각만 비우고 나머지 기록은 남긴다
+  const nr=Object.assign({},prev||{},{off:true,manual:true});
+  delete nr.in; delete nr.out; delete nr.otOut;
+  return nr;
+}
 function recAbsent(){
   const e=emp(recEmpId);
   if(!confirm(`${e.name}님을 ${recDate} 결근으로 처리할까요?`))return;
   DB.records[recDate]=DB.records[recDate]||{};
-  DB.records[recDate][recEmpId]={off:true,manual:true};
+  DB.records[recDate][recEmpId]=recAbsentRec(recOf(recDate,recEmpId));
   save(); queueRec(recDate,recEmpId); closeM('mdRec'); renderStatus(); toast('결근 처리되었습니다');
 }
 function saveRec(){
   const i=document.getElementById('recIn').value,o=document.getElementById('recOut').value;
+  // 출근 없이 퇴근만 있는 기록은 만들지 않는다 — 앱에서도 '출근 안 함'으로 읽히고,
+  // 클라우드 보안규칙(출근 또는 결근 표식 필수)에서도 영구 거부된다.
+  if(!i&&o){ toast('출근 시각도 함께 넣어 주세요 (퇴근만 저장할 수 없습니다)'); return; }
   DB.records[recDate]=DB.records[recDate]||{};
   if(!i&&!o){
-    // 빈 값 저장 = 결근 처리. 삭제 대신 표식을 남겨 다른 기기와 동기화 시 기록이 되살아나지 않게 함
-    DB.records[recDate][recEmpId]={off:true,manual:true};
+    // 빈 값 저장 = 결근 처리. 삭제 대신 표식을 남긴다.
+    // 지각 신고·야근 입력·사유·위치 표식은 **지우지 않는다**(나중에 되돌리거나 근거로 쓴다).
+    DB.records[recDate][recEmpId]=recAbsentRec(recOf(recDate,recEmpId));
   }
   else{
     // 기존 기록을 그대로 물려받고 출퇴근 시각만 바꾼다.
@@ -2495,16 +2504,33 @@ function queueRec(date,empId){
   localStorage.setItem(LS,JSON.stringify(DB));
   flushPending();
 }
+const PEND_MAX=5;            // 한 기록을 최대 몇 번까지 다시 보내볼지
+let pendBusy=false;
 async function flushPending(){
-  if(!cloudOn()||!DB.pending||!DB.pending.length)return;
-  for(const it of [...DB.pending]){
-    const rec=(DB.records[it.d]||{})[it.e]||null;
-    try{
-      await cfetch('/recs/'+it.d,{method:'PATCH',body:JSON.stringify({[it.e]:rec})});
-      DB.pending=DB.pending.filter(x=>!(x.d===it.d&&x.e===it.e));
-    }catch(e){ break; }
-  }
-  localStorage.setItem(LS,JSON.stringify(DB));
+  if(!cloudOn()||!DB.pending||!DB.pending.length||pendBusy)return;
+  pendBusy=true;
+  try{
+    const todo=[...DB.pending], keep=[]; let gaveUp=0;
+    for(const it of todo){
+      const rec=(DB.records[it.d]||{})[it.e]||null;
+      try{
+        await cfetch('/recs/'+it.d,{method:'PATCH',body:JSON.stringify({[it.e]:rec})});
+      }catch(e){
+        // 한 건이 실패해도 **멈추지 않는다**. 예전에는 break 라서 영구 실패 항목 하나가
+        // 그 기기의 이후 기록을 전부 막았다(보안규칙을 켜는 순간 터질 구조였다).
+        it.f=(it.f||0)+1;
+        if(it.f<PEND_MAX)keep.push(it); else gaveUp++;
+      }
+    }
+    // 보내는 동안 새로 들어온 항목은 보존한다
+    const seen=new Set(todo.map(x=>x.d+'|'+x.e));
+    DB.pending=keep.concat((DB.pending||[]).filter(x=>!seen.has(x.d+'|'+x.e)));
+    localStorage.setItem(LS,JSON.stringify(DB));
+    if(gaveUp&&!window._pendWarned){
+      window._pendWarned=true;
+      toast(`⚠️ 기록 ${gaveUp}건을 서버에 보내지 못했습니다. 관리자에게 알려 주세요`);
+    }
+  } finally { pendBusy=false; }
 }
 let syncBusy=false, notifyCache=null;
 async function cloudSync(){
