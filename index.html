@@ -673,7 +673,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_182730'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_183305'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -693,6 +693,9 @@ function seed(){
   const sch={days:[1,2,3,4,5],start:'09:00',end:'18:00'};
   return {
     settings:{pin:'1234',breakMin:60,taxEmail:''},
+    // ⚠️ 주민번호·계좌는 비워 둡니다(2026-11-06). 평문으로 두면 저장소·백업을 통해 샙니다.
+    //    실제 값은 관리자 기기 localStorage 와 클라우드 /priv(AES-GCM 암호문)에 있고,
+    //    이 PC 한정 백업은 직원_민감정보_백업.json (.gitignore) 입니다.
     employees:[],
     records:{},   // {'YYYY-MM-DD':{empId:{in:'HH:MM',out:'HH:MM',manual:bool}}}
     overrides:{}  // {'YYYY-MM':{empId:{absent,early,fee,absentW}}}
@@ -3062,6 +3065,7 @@ function pushWho(){ // 이 기기가 누구 것인지 (직원이면 본인 id, �
   return {id:'_admin',name:'관리자 기기'};
 }
 function pushOn(){ return !!(DB.settings&&DB.settings.pushSub); }
+// ※ 구독 정보에는 실명을 올리지 않는다(클라우드가 무인증 공개 구간). 직원 id만 두고 이름은 각 기기에서 찾는다.
 async function pushEnable(){
   if(!pushSupported()){ toast('이 브라우저는 폰 알림을 지원하지 않습니다'); return false; }
   if(isIOS()&&!isStandalone()){
@@ -3079,7 +3083,7 @@ async function pushEnable(){
     DB.settings.pushSub=j.endpoint; save();
     if(cloudOn()){
       await cfetch('/push/'+devId(),{method:'PUT',body:JSON.stringify({
-        e:who.id, n:who.name, sub:j, ts:Date.now(),
+        e:who.id, n:0, sub:j, ts:Date.now(),
         ua:(isIOS()?'iPhone':/Android/i.test(navigator.userAgent)?'Android':'PC')})});
     }
     renderPushUI(); toast('폰 알림이 켜졌습니다! 📲');
@@ -3107,7 +3111,7 @@ async function pushRefresh(){ // 앱 열 때마다 구독이 살아 있는지 �
     const j=sub.toJSON(), who=pushWho();
     if(j.endpoint!==DB.settings.pushSub){ DB.settings.pushSub=j.endpoint; save(); }
     if(cloudOn())cfetch('/push/'+devId(),{method:'PUT',body:JSON.stringify({
-      e:who.id,n:who.name,sub:j,ts:Date.now(),
+      e:who.id,n:0,sub:j,ts:Date.now(),
       ua:(isIOS()?'iPhone':/Android/i.test(navigator.userAgent)?'Android':'PC')})}).catch(()=>{});
   }catch(e){}
 }
