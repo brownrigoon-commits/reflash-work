@@ -681,7 +681,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_201146'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_204023'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -732,9 +732,11 @@ function renderFailBar(){
 }
 function failRetry(){
   DB.sendFail=[]; window._pendWarned=0; window._lvWarned=0;
-  // 멈춰 둔 항목을 풀고 대기열에 다시 태운다
+  // 멈춰 둔 항목을 풀고 대기열에 다시 태운다 (연차 + 근태 양쪽)
   const it=leavesDB().items;
   Object.keys(it).forEach(id=>{ if(it[id]&&it[id].sendErr){ delete it[id].sendErr; queueLeave(id); } });
+  // 예전에는 연차만 재큐해서, 근태는 한 건도 다시 보내지 않고 유실 목록만 지웠다.
+  Object.keys(DB.recHold||{}).forEach(k=>{ const [d,e]=k.split('|'); if(d&&e)queueRec(d,e); });
   save(); renderFailBar();
   if(cloudOn()){ cloudSync(); toast('다시 보내는 중입니다'); } else toast('인터넷에 연결되면 자동으로 보냅니다'); }
 function failClear(){ if(!confirm('이 알림만 지울까요?\n(저장되지 못한 내용 자체는 그대로 남습니다)'))return;
@@ -742,14 +744,14 @@ function failClear(){ if(!confirm('이 알림만 지울까요?\n(저장되지 �
 function lsSave(){ // 저장 실패(용량 초과·사생활 보호 모드)가 작업을 통째로 죽이지 않게
   try{ localStorage.setItem(LS,JSON.stringify(DB)); return true; }
   catch(e){
-    if(!window._lsWarned){ window._lsWarned=true;
-      try{ toast('⚠️ 이 기기에 저장할 공간이 없습니다. 관리자에게 알려 주세요'); }catch(_){}
-      console.warn('localStorage 저장 실패',e);
-    }
+    // 매번 알린다. 한 번만 알리면 두 번째 작업부터는 '저장되었습니다'만 뜨고
+    // 실제로는 아무것도 저장되지 않아, 새로고침 한 번에 그날 작업이 사라졌다.
+    try{ toast('⚠️ 이 기기에 저장하지 못했습니다 — 저장 공간을 비우고 다시 해 주세요'); }catch(_){}
+    console.warn('localStorage 저장 실패',e);
     return false;
   }
 }
-function save(){ lsSave(); try{autoBackup();}catch(e){} }
+function save(){ const ok=lsSave(); try{autoBackup();}catch(e){} return ok; }
 function emp(id){ return DB.employees.find(e=>e.id===id); }
 function activeEmps(d){ // 재직자 (기준일)
   const ds=d||todayStr();
@@ -817,8 +819,8 @@ function renderKiosk(){
   list.forEach(e=>{
     const r=recOf(ds,e.id);
     let cls='',st='<span class="dot gr"></span><span class="st gray">출근 전</span>',tm='';
-    if(r&&r.in&&!r.out){cls='working';st='<span class="dot g"></span><span class="st grn">근무중</span>';tm=`출근 ${r.in}`;}
-    else if(r&&r.in&&r.out){cls='done';st='<span class="dot p"></span><span class="st pur">퇴근 완료</span>';tm=`출근 ${r.in} · 퇴근 ${r.out}`;}
+    if(r&&r.in&&!r.out){cls='working';st='<span class="dot g"></span><span class="st grn">근무중</span>';tm=`출근 ${esc(r.in)}`;}
+    else if(r&&r.in&&r.out){cls='done';st='<span class="dot p"></span><span class="st pur">퇴근 완료</span>';tm=`출근 ${esc(r.in)} · 퇴근 ${esc(r.out)}`;}
     // 출퇴근 화면에는 고용형태 대신 담당 업무만 표시 (고용형태는 직원관리에서만)
     const duty=e.duty?`<div style="margin-top:5px;"><span class="badge b-duty">${esc(e.duty)}</span></div>`:'';
     const mine=!staffMode||e.id===cc.myEmpId;
@@ -838,8 +840,8 @@ function openPunch(id){
   const st=document.getElementById('punchState');
   const bi=document.getElementById('btnIn'), bo=document.getElementById('btnOut');
   if(!r||!r.in){ st.innerHTML='<span class="tag hol">아직 출근 전입니다</span>'; bi.disabled=false; bo.disabled=true; }
-  else if(!r.out){ st.innerHTML=`<span class="tag ok">출근 ${r.in} — 근무중</span>`; bi.disabled=true; bo.disabled=false; }
-  else { st.innerHTML=`<span class="tag man">출근 ${r.in} · 퇴근 ${r.out} 완료</span>`; bi.disabled=true; bo.disabled=true; }
+  else if(!r.out){ st.innerHTML=`<span class="tag ok">출근 ${esc(r.in)} — 근무중</span>`; bi.disabled=true; bo.disabled=false; }
+  else { st.innerHTML=`<span class="tag man">출근 ${esc(r.in)} · 퇴근 ${esc(r.out)} 완료</span>`; bi.disabled=true; bo.disabled=true; }
   const bu=document.getElementById('btnUndo');
   if(bu){ // 잘못 누른 기록 취소 (오늘 기록이 있을 때만)
     if(r&&r.out){ bu.style.display='block'; bu.textContent=`↩️ 잘못 눌렀어요 — 퇴근(${r.out}) 취소`; }
@@ -951,13 +953,12 @@ function otEndMin(e,r){ // 야근 종료로 "인정"할 시각(분). 없으면 n
    관리자가 직접 넣은 기록(manual)은 그 자체가 확인이므로 인정으로 본다. */
 function holMin(e,r){
   if(!r||!r.in)return 0;
-  if(r.otOk===0)return 0;                                   // 반려
-  const wm=workedMin(e,{in:r.in,out:r.otOut||r.out});
-  if(wm<=0)return 0;
-  return (r.otOk===1||r.manual)?wm:0;
+  if(r.otOk!==1)return 0;         // 관리자가 '인정'한 것만. manual 은 승인이 아니다 —
+  const wm=workedMin(e,{in:r.in,out:r.otOut||r.out});   // 야근 기록 지우기·지각 정정·오타 수정에도
+  return wm>0?wm:0;                                     // manual 이 붙어서, 지우려 누른 버튼이 승인이 됐다.
 }
 function holPendMin(e,r){                                   // 아직 확인 안 된 휴일근무
-  if(!r||!r.in||r.otOk!=null||r.manual)return 0;
+  if(!r||!r.in||r.otOk!=null)return 0;
   return Math.max(0,workedMin(e,{in:r.in,out:r.otOut||r.out}));
 }
 function otMin(e,r,d){
@@ -978,8 +979,72 @@ function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants|
    onclick="openRec('<id>',…)" 자리에서 관리자 기기에서 그 코드가 돈다.
    id 는 앱이 만드는 값이므로(e숫자 / l숫자영문) 엄격히 제한해도 멀쩡하다. */
 const ID_OK=/^[A-Za-z0-9_-]{1,40}$/;
+const HM_OK=/^([01]?\d|2[0-3]):[0-5]\d$/;
+const TOPIC_OK=/^[A-Za-z0-9_-]{1,64}$/;
 function safeId(s){ return typeof s==='string'&&ID_OK.test(s); }
 function safeDate(s){ return typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s); }
+function safeHM(s){ return typeof s==='string'&&HM_OK.test(s); }
+function safeNum(v,lo,hi){ return (typeof v==='number'&&isFinite(v)&&v>=lo&&v<=hi)?v:null; }
+function safeTxt(s,n){ return typeof s==='string'?s.slice(0,n||200):''; }
+
+/* 클라우드에서 받는 '값'을 모양으로 걸러낸다.
+   열쇠(id)만 검사하고 값을 그대로 복사하던 것이 치명적 구멍이었다:
+   out:"<img src=x onerror=...>" 가 보안규칙을 통과해 키오스크 화면에서 실행됐다. */
+function safeRecVal(r){
+  if(!r||typeof r!=='object'||Array.isArray(r))return null;
+  const o={};
+  ['in','out','otOut','rin','otE'].forEach(k=>{ if(safeHM(r[k]))o[k]=r[k]; });
+  ['off','manual','auto'].forEach(k=>{ if(r[k])o[k]=true; });
+  ['otOk','rok'].forEach(k=>{ if(r[k]===0||r[k]===1)o[k]=r[k]; });
+  ['far','farO'].forEach(k=>{ const v=safeNum(r[k],-1,100000); if(v!=null)o[k]=Math.round(v); });
+  ['otMemo','rmemo'].forEach(k=>{ if(typeof r[k]==='string'&&r[k])o[k]=safeTxt(r[k],200); });
+  return (o.in||o.off)?o:null;                 // 출근도 결근표식도 없는 기록은 받지 않는다
+}
+function safeEmpVal(e){
+  if(!e||typeof e!=='object'||Array.isArray(e))return null;
+  const nm=safeTxt(e.name,40); if(!nm)return null;
+  const s=e.schedule||{};
+  return {
+    name:nm,
+    type:['regular','freelance','daily'].includes(e.type)?e.type:'regular',
+    joinDate:safeDate(e.joinDate)?e.joinDate:'2000-01-01',
+    leaveDate:safeDate(e.leaveDate)?e.leaveDate:null,
+    role:['admin','subadmin','staff'].includes(e.role)?e.role:'staff',
+    main:!!e.main, autoPunch:!!e.autoPunch,
+    phone:safeTxt(e.phone,20), duty:safeTxt(e.duty,40),
+    schedule:{
+      days:Array.isArray(s.days)?s.days.filter(d=>Number.isInteger(d)&&d>=0&&d<=6):[1,2,3,4,5],
+      start:safeHM(s.start)?s.start:'09:00',
+      end:safeHM(s.end)?s.end:'18:00'
+    }
+  };
+}
+function safeNotifyVal(n){
+  if(!n||typeof n!=='object')return null;
+  const o={};
+  if(TOPIC_OK.test(n.ntfy||''))o.ntfy=n.ntfy;
+  if(TOPIC_OK.test(n.boss||''))o.boss=n.boss;
+  if(n.lateOn===false)o.lateOn=false;
+  if(safeHM(n.lateAt))o.lateAt=n.lateAt;
+  if(n.recips&&typeof n.recips==='object'){
+    o.recips={};
+    Object.keys(n.recips).forEach(k=>{ if(k==='_admin'||safeId(k))o.recips[k]=!!n.recips[k]; });
+  }
+  return o;
+}
+function safeGeoVal(g){
+  if(!g||typeof g!=='object')return null;
+  const lat=safeNum(g.lat,-90,90), lng=safeNum(g.lng,-180,180);
+  if(lat==null||lng==null)return null;
+  return {lat,lng,acc:safeNum(g.acc,0,1e6),rad:safeNum(g.rad,10,100000),ts:safeNum(g.ts,0,1e15)};
+}
+function safeLunchCfg(c){
+  if(!c||typeof c!=='object')return null;
+  const o={};
+  if(/^[0-9+-]{1,20}$/.test(String(c.vendor==null?'':c.vendor)))o.vendor=String(c.vendor);
+  if(typeof c.tpl==='string')o.tpl=safeTxt(c.tpl,300);
+  return o;
+}
 function esc(s){ // 클라우드에서 온 글자(사유·이름 등)를 화면에 넣을 때 반드시 거친다
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -998,6 +1063,11 @@ function leaveSendErr(empId){ // 서버에 올라가지 못한 신청 — 화면
   return Object.entries(leavesDB().items)
     .filter(([id,x])=>x&&!x.del&&x.sendErr&&(!empId||x.e===empId))
     .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
+}
+function leaveDayAny(ds,empId){ // 그날 연차 신청이 있었나 (확정·대기·반려 전부)
+  const it=leavesDB().items;
+  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.e===empId&&x.d===ds)return x; }
+  return null;
 }
 function leaveWaiting(empId){ // 승인 대기 목록
   return Object.entries(leavesDB().items)
@@ -1099,10 +1169,12 @@ function autoPunchTick(){
       if(!isWorkday(e,d))continue;
       const ds=fmtD(d);
       if(recOf(ds,e.id))continue;            // 이미 기록(수동·끔 포함) 있으면 유지
-      // 확정 연차뿐 아니라 '승인 대기' 신청일도 건너뛴다.
-      // 예전에는 대기 중인 날에 정상 출근 기록을 만들어 놓아, 승인 뒤에도
-      // 근태기록에는 '정상 출근'으로 남고 반려되면 일한 것처럼 보였다.
-      if(leaveAnyOn(ds,e.id))continue;
+      // 연차 신청이 있었던 날은 **상태와 무관하게** 자동 기록하지 않는다.
+      //  · 확정: 유급 휴가다
+      //  · 대기: 승인되면 유급이 된다
+      //  · 반려: "쉬려 했지만 안 됐다"는 뜻이라 사람이 확인해야 한다.
+      //    예전에는 반려 직후 다음 1분 틱에 정시 출퇴근이 채워져, 쉰 날이 정상 근무가 됐다.
+      if(leaveDayAny(ds,e.id))continue;
       if(ds<tds){                            // 지난 근무일: 정시 출퇴근으로 채움
         DB.records[ds]=DB.records[ds]||{};
         DB.records[ds][e.id]={in:e.schedule.start,out:e.schedule.end,auto:true};
@@ -1520,7 +1592,7 @@ function lunchSmsHref(n){
   const cfg=window._roomLunchCfg;
   const msg=lunchMsg(cfg&&cfg.tpl,n);
   const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent);
-  return 'sms:'+cfg.vendor+(ios?'&':'?')+'body='+encodeURIComponent(msg);
+  return 'sms:'+encodeURIComponent(String(cfg.vendor||''))+(ios?'&':'?')+'body='+encodeURIComponent(msg);
 }
 function lunchDefaultN(ds){
   const d=new Date(ds+'T00:00:00');
@@ -1603,7 +1675,7 @@ function renderLunchBar(){
       <button class="btn ghost" style="flex:1;" onclick="lunchClosePanel()">닫기</button>
     </div>
     ${selOv&&selOv.hold?`<button class="btn red wide" style="margin-top:8px;" onclick="lunchClearManual()">이 날짜 예약 해제 (자동 주문 복귀)</button>`:''}
-    ${sel===todayStr()?`<a class="btn y wide" style="text-decoration:none;margin-top:8px;display:block;text-align:center;" href="${lunchSmsHref(n)}">📩 지금 이 인원으로 직접 문자 보내기</a>`:''}
+    ${sel===todayStr()?`<a class="btn y wide" style="text-decoration:none;margin-top:8px;display:block;text-align:center;" href="${esc(lunchSmsHref(n))}">📩 지금 이 인원으로 직접 문자 보내기</a>`:''}
     <div class="muted" style="margin-top:8px;">예약한 날짜에는 출근 인원과 상관없이 <b>지정 개수로 오전 9:20 자동 발송</b>됩니다.<br>0개로 예약하면 그날은 주문이 나가지 않습니다. 예약이 없는 날은 출근 인원 자동 주문.</div>
   </div>`;
 }
@@ -1626,7 +1698,7 @@ function renderStatus(){
     visEmps(ds).forEach(e=>{
       const r=recOf(ds,e.id), st=dayStatus(e,new Date(stDate));
       const wm=workedMin(e,r);
-      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td>${esc(r&&r.in?r.in:'-')}</td><td>${r&&r.out?r.out:'-'}${r&&r.otOut?`<br><span class="tag man">🌙 ${r.otOut}</span>`:''}</td>
+      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td>${esc(r&&r.in?r.in:'-')}</td><td>${esc(r&&r.out?r.out:'-')}${r&&r.otOut?`<br><span class="tag man">🌙 ${esc(r.otOut)}</span>`:''}</td>
         <td>${wm?Math.floor(wm/60)+'h '+(wm%60)+'m':'-'}</td>
         <td><span class="tag ${st.t}">${st.l}</span>${r&&r.auto?' <span class="tag man">자동</span>':''}${r&&r.manual?' <span class="tag man">수정</span>':''}</td>
         <td>${canManage()?`<button class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:8px;" onclick="openRec('${e.id}','${ds}')">수정</button>`:''}</td></tr>`;
@@ -1649,7 +1721,7 @@ function renderStatus(){
       for(let i=0;i<7;i++){
         const d=new Date(mon);d.setDate(mon.getDate()+i);
         const r=recOf(fmtD(d),e.id), st=dayStatus(e,d);
-        if(r&&r.in)h+=`<td style="font-size:10.5px;line-height:1.5;">${r.in}<br>${r.otOut||r.out||'…'}${r.otOut?'🌙':''}</td>`;
+        if(r&&r.in)h+=`<td style="font-size:10.5px;line-height:1.5;">${esc(r.in)}<br>${esc(r.otOut||r.out||'…')}${r.otOut?'🌙':''}</td>`;
         else h+=`<td><span class="tag ${st.t}" style="font-size:10px;">${st.l==='-'?'·':st.l}</span></td>`;
       }
       h+='</tr>';
@@ -1683,7 +1755,7 @@ function openRec(id,ds){
   const r=recOf(ds,id)||{};
   document.getElementById('recTitle').textContent=`${emp(id).name} · ${ds}`;
   document.getElementById('recSub').innerHTML='출퇴근 시각을 직접 입력합니다.'
-    +(r.otOut?`<br>🌙 실제 퇴근을 누른 시각: <b>${r.otOut}</b> (야근 현황판에 표시 중)`:'')
+    +(r.otOut?`<br>🌙 실제 퇴근을 누른 시각: <b>${esc(r.otOut)}</b> (야근 현황판에 표시 중)`:'')
     +(leaveOn(ds,id)?`<br>🌴 이날은 <b>${LEAVE_NM[leaveOn(ds,id).t]}</b> 등록일입니다`:'');
   document.getElementById('recIn').value=r.in||'';
   document.getElementById('recOut').value=r.out||'';
@@ -1707,9 +1779,9 @@ function openRec(id,ds){
     ob.style.display='block';
     const m=toMin(r.otE)-toMin(emp(id).schedule.end);
     document.getElementById('recOtTxt').innerHTML=
-      `본인 입력: <b>${r.otE}</b>까지 — 야근 <b>${fmtHM(Math.max(0,m))}</b>`
+      `본인 입력: <b>${esc(r.otE)}</b>까지 — 야근 <b>${fmtHM(Math.max(0,m))}</b>`
       +(r.otMemo?`<br>내용: ${esc(r.otMemo)}`:'')
-      +(r.otOut?`<br><span class="muted">자동 포착: ${r.otOut}</span>`:'')
+      +(r.otOut?`<br><span class="muted">자동 포착: ${esc(r.otOut)}</span>`:'')
       +(r.otOk===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
         :r.otOk===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨 (야근에서 제외)</span>'
         :'<br><span style="color:#D95B23;font-weight:700;">⏳ 확인 대기</span>');
@@ -1718,7 +1790,7 @@ function openRec(id,ds){
   if(r.rin){
     box.style.display='block';
     document.getElementById('recRptTxt').innerHTML=
-      `찍은 시각 <b>${r.in}</b> → 본인 신고 <b>${r.rin}</b>`
+      `찍은 시각 <b>${esc(r.in)}</b> → 본인 신고 <b>${esc(r.rin)}</b>`
       +(r.rmemo?`<br>사유: ${esc(r.rmemo)}`:'')
       +(r.rok===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
         :r.rok===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨</span>':'');
@@ -1770,13 +1842,16 @@ function saveRec(){
     const prev=recOf(recDate,recEmpId)||{};
     const nr=Object.assign({},prev,{in:i||null,out:o||null,manual:true});
     delete nr.off;                                   // 시각을 넣었으므로 결근 표식은 해제
+    // 관리자가 휴일에 **없던 기록을 새로 만드는** 것은 '이 휴일근무를 인정한다'는 뜻이다.
+    // 이미 있던 기록을 고치는 경우(출근 시각 오타 수정 등)는 인정이 아니다 —
+    // 그렇게 두면 오타 한 번 고치는 것만으로 자동 포착된 야근까지 통째로 승인됐다.
+    if(nr.in&&!prev.in&&nr.otOk==null&&!isWorkday(emp(recEmpId),new Date(recDate+'T00:00:00')))nr.otOk=1;
     if(prev.otOut&&o&&toMin(prev.otOut)<=toMin(o))delete nr.otOut;  // 퇴근을 더 늦게 고쳤으면 자동포착분은 불필요
     // 퇴근을 더 '이른' 시각으로 고쳤는데 자동 포착된 야근 기록이 남아 있으면,
     // 그대로 두면 야근이 줄지 않는다. 그래서 함께 지울지 물어본다.
     if(nr.otOut&&o&&toMin(nr.otOut)>toMin(o)){
       if(confirm(`퇴근을 ${o}으로 고치셨습니다.\n자동으로 잡힌 야근 기록(${nr.otOut})도 함께 지울까요?\n\n[확인] 지웁니다 — 야근 시간이 줄어듭니다\n[취소] 그대로 둡니다`)){
-        delete nr.otOut;
-        if(nr.otE==null)delete nr.otOk;
+        delete nr.otOut;        // otOk(인정·반려)는 지우지 않는다 — 관리자의 판단 기록이다
       }
     }
     DB.records[recDate][recEmpId]=nr;
@@ -2089,8 +2164,9 @@ function setGrant(empId,v){
   if(!canManage())return;
   const Y=String(leaveYear), L=leavesDB(), s=String(v).trim();
   L.grants[Y]=L.grants[Y]||{};
-  if(s===''){ delete L.grants[Y][empId]; leavePut(`/grants/${Y}/${empId}`,null); }
-  else{ const n=Math.round(parseFloat(s)*2)/2; if(isNaN(n)||n<0){toast('숫자로 입력해 주세요');renderLeave();return;} L.grants[Y][empId]=n; leavePut(`/grants/${Y}/${empId}`,n); }
+  const who=(emp(empId)||{}).name||'';
+  if(s===''){ delete L.grants[Y][empId]; leavePut(`/grants/${Y}/${empId}`,null,who); }
+  else{ const n=Math.round(parseFloat(s)*2)/2; if(isNaN(n)||n<0){toast('숫자로 입력해 주세요');renderLeave();return;} L.grants[Y][empId]=n; leavePut(`/grants/${Y}/${empId}`,n,who); }
   save(); renderLeave(); toast('발생 일수를 저장했습니다');
 }
 function openLeaveForm(){
@@ -2168,11 +2244,19 @@ async function flushLeaves(){
            예전에는 무조건 덮어써서 ① 오프라인에 있던 옛 승인이 다른 관리자의 최신 반려를 지웠고
            ② 응답만 끊긴 신청이 그 뒤의 관리자 승인을 '승인 대기'로 되돌렸다. */
         const c=await cfetch('/leaves/items/'+it.id);
-        const cloudDecided=!!(c&&!c.st);                // 서버에서 이미 승인됨
-        const cloudNewer=!!(c&&(c.ts||0)>(x.ts||0));
-        // st:'w' 는 신청의 첫 상태일 뿐, 어떤 경로로도 다시 'w' 가 되지 않는다.
-        // 그래서 '승인 대기'는 이미 결정된 서버 값을 절대 덮지 않는다 (시각이 같아도).
-        const mineStale=(x.st==='w'&&c&&c.st!=='w')||(cloudNewer&&!(x.del&&!c.del))||(cloudDecided&&x.st==='w');
+        /* 누가 맞는가
+           ① 내가 삭제했으면 내가 이긴다 — 삭제는 명시적 의사표시다.
+              (예전에는 '대기' 신청의 삭제가 더 오래된 클라우드 값에 항상 져서, 지워도 되살아났다)
+           ② 내 변경이 더 새로우면 내가 이긴다.
+           ③ 시각이 같으면 '결정된 상태(승인·반려)'가 '대기'를 이긴다 — 대기는 첫 상태일 뿐,
+              어떤 경로로도 다시 'w' 가 되지 않는다. [전부 승인]이 전 건에 같은 ts 를 넣으므로
+              동치 ts 는 흔하다. */
+        let mineStale=false;
+        if(c&&!(x.del&&!c.del)){
+          const ct=c.ts||0, xt=x.ts||0;
+          if(ct>xt)mineStale=true;
+          else if(ct===xt&&x.st==='w'&&c.st!=='w')mineStale=true;
+        }
         if(mineStale){
           leavesDB().items[it.id]=c; took++; continue;  // 서버 쪽이 맞다 → 내 옛 변경을 버린다
         }
@@ -2208,7 +2292,13 @@ async function flushLeaves(){
     if((okN||took)&&DB.pendLv.length)setTimeout(flushLeaves,0);
   } finally { lvBusy=false; }
 }
-function leavePut(path,val){ if(cloudOn())cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)}).catch(()=>{}); }
+/* 연차 발생일수(grants) — 예전에는 던져놓기여서 실패하면 토스트는 '저장했습니다'인데
+   25초 뒤 옛 값으로 되돌아갔다(3일 차이 = 281,328원). 이제 실패를 사람에게 알린다. */
+function leavePut(path,val,who){
+  if(!cloudOn())return;
+  cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)})
+    .catch(e=>{ failNote('연차 발생일수', who||'', path.replace('/grants/',''), String(e.message||'')); });
+}
 // 클라우드 병합: 클라우드 우선, 이 기기에만 있는 항목·삭제 표식은 올림
 function leaveMergeCloud(cl){
   const L=leavesDB(), cg=(cl&&cl.grants)||{}, upI={}, upG={};
@@ -2223,7 +2313,9 @@ function leaveMergeCloud(cl){
   const items={...ci}, dropQ=[];
   Object.entries(L.items).forEach(([id,x])=>{
     const c=ci[id];
-    if(!c||(x.del&&!c.del)||((x.ts||0)>(c.ts||0))){
+    const decided=x=>x&&x.st!=='w';
+    if(!c||(x.del&&!c.del)||((x.ts||0)>(c.ts||0))
+       ||((x.ts||0)===(c.ts||0)&&decided(x)&&!decided(c))){   // 같은 시각이면 결정된 쪽이 이긴다
       items[id]=x;                                  // 내 쪽이 더 새롭다(또는 클라우드에 없다)
       if(!lvPending(id))upI[id]=x;                  // 대기열에 있으면 거기서 보낸다
     } else if(lvPending(id)) dropQ.push(id);        // 클라우드가 더 새롭다 → 내 옛 변경은 버린다
@@ -2257,7 +2349,7 @@ function settleOne(e,y,m){
     // (야근 현황판은 출근 기록이 없으면 보여 주지 않으므로, 세면 출처를 못 찾는 유령이 된다)
     if(r.in&&r.rin&&r.rok==null)wait++;                 // 지각 정정 신고 대기
     if(r.in&&r.otE&&r.otOk==null)wait++;                // 야근 입력 대기
-    if(r.far!=null||r.farO!=null)farCnt++;              // 회사 밖에서 찍음
+    if(r.in&&(r.far!=null||r.farO!=null))farCnt++;       // 회사 밖에서 찍음 (결근 처리된 날은 세지 않는다 — 현황에서 찾아갈 대상이 없다)
   }
   const Y=y, grant=leaveGrant(e,Y), used=leaveUsed(e,Y);
   wait+=leaveWaiting(e.id).length;                      // 연차 신청 대기
@@ -2596,7 +2688,12 @@ function restoreJson(inp){
   rd.onload=()=>{ try{
     const d=JSON.parse(rd.result);
     if(!d.employees||!d.records)throw 0;
-    if(confirm('현재 데이터를 백업 파일로 덮어씁니다. 계속할까요?')){ DB=d; save(); location.reload(); }
+    if(confirm('현재 데이터를 백업 파일로 덮어씁니다. 계속할까요?')){
+      const old=DB; DB=d;
+      // 저장이 실패했는데 새로고침하면 옛 데이터로 돌아오면서 '복원했다'고 믿게 된다
+      if(save())location.reload();
+      else{ DB=old; toast('⚠️ 저장 공간이 없어 복원하지 못했습니다. 공간을 비우고 다시 해 주세요'); }
+    }
   }catch(e){toast('올바른 백업 파일이 아닙니다');} };
   rd.readAsText(f); inp.value='';
 }
@@ -2724,6 +2821,7 @@ function queueRec(date,empId){
   // 끝난 뒤 새 값으로 한 번 더 보내야 한다. 예전에는 이 표시가 없어서
   // "출근 전송 중에 퇴근을 누르면 퇴근이 큐에도 서버에도 안 남는" 유실이 있었다.
   if(old)old.dirty=1; else DB.pending.push({d:date,e:empId});
+  window._recTouch=window._recTouch||{}; window._recTouch[date+'|'+empId]=Date.now();
   lsSave();
   flushPending();
 }
@@ -2751,6 +2849,7 @@ async function flushPending(){
       try{
         await cfetch('/recs/'+it.d,{method:'PATCH',body:JSON.stringify({[it.e]:rec})});
         okN++;
+        if(DB.recHold)delete DB.recHold[it.d+'|'+it.e];   // 올라갔으니 보류 해제
         if(it.dirty)keep.push(it);       // 보내는 중에 또 바뀌었다 → 새 값으로 다시 보낸다
       }catch(e){
         // 한 건이 실패해도 **멈추지 않는다**. 예전에는 break 라서 영구 실패 항목 하나가
@@ -2759,6 +2858,10 @@ async function flushPending(){
         if(isRejected(e)){
           gaveUp++;                      // 다시 보내도 같은 결과 — 사람에게 알린다
           failNote('근태', ((emp(it.e)||{}).name)||it.e, it.d, String(e.message||''));
+          // 큐에서는 빼지만 **내 쪽 값이 맞다**고 표시한다.
+          // 표시하지 않으면 다음 동기화에서 클라우드 옛 값이 이겨, 관리자가 고친 내용이
+          // 25초마다 조용히 되돌아갔다(결근 처리가 '정상 출근'으로 복귀 = 급여 과지급).
+          DB.recHold=DB.recHold||{}; DB.recHold[it.d+'|'+it.e]=Date.now();
         } else keep.push(it);            // 인터넷·과부하 문제 — 연결될 때까지 보관
       }
     }
@@ -2785,27 +2888,39 @@ async function cloudSync(){
       // 날짜·직원id 모양이 아닌 기록은 받지 않는다 (onclick="openRec('<id>','<날짜>')" 자리 보호)
       const cr={}; Object.entries(room.recs||{}).forEach(([d,em])=>{
         if(!safeDate(d)||!em||typeof em!=='object')return;
-        const row={}; Object.entries(em).forEach(([id,r])=>{ if(safeId(id))row[id]=r; });
+        const row={};
+        Object.entries(em).forEach(([id,r])=>{
+          if(!safeId(id))return;
+          const v=safeRecVal(r); if(v)row[id]=v;     // 값의 모양까지 검사한다
+        });
         cr[d]=row;
       });
       const up={}; let localOnly=0;
       const pq=new Set((DB.pending||[]).map(x=>x.d+'|'+x.e));
+      const hold=DB.recHold||{}, touch=window._recTouch||{}, now=Date.now();
+      const mine=k=>pq.has(k)||!!hold[k]||((now-(touch[k]||0))<60000);
       Object.entries(DB.records||{}).forEach(([d,em])=>Object.entries(em||{}).forEach(([id,r])=>{
+        const k=d+'|'+id;
         if(!(cr[d]&&cr[d][id]!==undefined)){ (cr[d]=cr[d]||{})[id]=r; (up[d]=up[d]||{})[id]=r; localOnly++; }
-        else if(pq.has(d+'|'+id)) cr[d][id]=r;   // 아직 못 보낸 내 수정 — 클라우드 옛 값이 덮지 못한다
+        // 아직 못 보낸 수정 / 서버가 거부해 내 쪽이 맞는 수정 / 방금(60초 내) 손댄 기록은
+        // 클라우드 옛 값이 덮지 못한다. 세 번째는 동기화 읽기가 느릴 때 방금 누른 퇴근이
+        // 멈춰 있던 옛 응답에 덮이는 것을 막는다.
+        else if(mine(k)) cr[d][id]=r;
       }));
       DB.records=cr;
-      // 날짜별 PATCH. 통째 PUT(/recs)은 보안규칙에서 거부되고, 그 사이 다른 기기가 올린
-      // 기록을 날릴 수도 있다. 예전에는 통째 PUT 이라 규칙을 켜는 순간 이 구제가 죽었다.
-      for(const d in up){ try{ await cfetch('/recs/'+d,{method:'PATCH',body:JSON.stringify(up[d])}); }catch(e){} }
+      // 날짜별로 **대기열에 태운다**. 통째 PUT(/recs)은 보안규칙에서 거부되고, 그 사이
+      // 다른 기기가 올린 기록을 날릴 수도 있다. 여기서 바로 PATCH 하고 결과를 버리면
+      // 영구 거부돼도 25초마다 영원히 조용히 재시도하게 된다(아무도 모른 채).
+      Object.entries(up).forEach(([d,em])=>Object.keys(em).forEach(id=>queueRec(d,id)));
     }
-    window._geo=room.geo||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준)
+    window._geo=safeGeoVal(room.geo)||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준, 숫자만)
     leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
       const badIds=Object.keys(room.emps).filter(id=>!safeId(id));
       if(badIds.length)console.warn('이상한 직원 id 무시',badIds);   // 화면·onclick 에 넣지 않는다
-      DB.employees=Object.entries(room.emps).filter(([id])=>safeId(id)).map(([id,e])=>{
+      DB.employees=Object.entries(room.emps).filter(([id])=>safeId(id))
+        .map(([id,e])=>[id,safeEmpVal(e)]).filter(([,e])=>e).map(([id,e])=>{
         const l=local[id]||{};
         return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||''),duty:(e.duty||l.duty||'')}; // 전화번호·담당업무는 비어있지 않은 값 우선 (지워짐 방지)
@@ -2834,7 +2949,7 @@ async function cloudSync(){
     // 관리자 비밀번호 동기화: 클라우드 해시가 모든 기기의 기준
     if(room.pinH)DB.settings.pinH=room.pinH;
     else if(isOwnerDev()&&cloudCfg().role==='admin')cfetch('/pinH',{method:'PUT',body:JSON.stringify(pinHash(DB.settings.pin))}).catch(()=>{});
-    notifyCache=room.notify||null;
+    notifyCache=safeNotifyVal(room.notify);      // 알림 채널·시각 모양 검사 (설정 화면에 그대로 찍힌다)
     // 관리자 기기: 알림 설정 최초 생성 (기본 = 전 직원 수신)
     if(cloudCfg().role==='admin'&&!notifyCache){
       const recips={_admin:true};
@@ -3362,7 +3477,7 @@ function renderGeoCard(){
   if(chk)chk.checked=!!g.on;
   const set=g.lat!=null&&g.lng!=null;
   body.innerHTML=`
-    <div class="muted" style="margin-bottom:8px;">회사 위치: ${set?`저장됨 (${g.lat}, ${g.lng})`:'<b style="color:#D95B23;">아직 저장 안 됨</b>'}</div>
+    <div class="muted" style="margin-bottom:8px;">회사 위치: ${set?`저장됨 (${esc(g.lat)}, ${esc(g.lng)})`:'<b style="color:#D95B23;">아직 저장 안 됨</b>'}</div>
     <button class="btn p wide" id="btnGeoHere" onclick="geoSaveHere()">📍 지금 내 위치를 회사로 저장</button>
     <div class="muted" style="margin:10px 0 4px;font-size:12px;">회사에서 이 버튼을 누르면 됩니다. 주소를 입력할 필요 없습니다.</div>
     <label class="f">인정 반경 (m)</label>
@@ -3493,7 +3608,7 @@ function renderNotifyCard(){
   const openBtn=document.getElementById('ntfyOpen');
   if(openBtn&&notifyCache&&notifyCache.ntfy)openBtn.href='https://ntfy.sh/'+notifyCache.ntfy;
   if(notifyCache&&notifyCache.ntfy)
-    info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${notifyCache.ntfy}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
+    info.innerHTML=`무료 앱 "ntfy"를 설치하고 채널 <b>${esc(notifyCache.ntfy)}</b> 을(를) 구독하면 잠금화면 푸시로 받을 수 있습니다. 아래 버튼으로 안내문을 보내세요.`;
   renderLateCard();
 }
 function renderLateCard(){
@@ -3503,10 +3618,10 @@ function renderLateCard(){
   }
   const bi=document.getElementById('bossInfo'), bo=document.getElementById('bossOpen');
   if(lc.boss&&!lc.own){
-    bi.innerHTML=`지금 받고 계신 출퇴근 알림 채널(<b>${lc.boss}</b>)로 함께 보냅니다. 따로 구독하지 않아도 됩니다.`;
+    bi.innerHTML=`지금 받고 계신 출퇴근 알림 채널(<b>${esc(lc.boss)}</b>)로 함께 보냅니다. 따로 구독하지 않아도 됩니다.`;
     bo.style.display='none';
   }else if(lc.boss){
-    bi.innerHTML=`미출근 알림 채널: <b>${lc.boss}</b><br>대표님 폰의 ntfy 앱에서 이 채널을 구독해 두세요.`;
+    bi.innerHTML=`미출근 알림 채널: <b>${esc(lc.boss)}</b><br>대표님 폰의 ntfy 앱에서 이 채널을 구독해 두세요.`;
     bo.href='https://ntfy.sh/'+lc.boss; bo.style.display='block';
   }else{ bi.textContent='클라우드 연동 후 출퇴근 알림 채널로 보냅니다.'; bo.style.display='none'; }
 }
