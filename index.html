@@ -672,7 +672,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_121315'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_121510'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -951,7 +951,7 @@ function monthAgg(e,y,m){
       if(r&&r.in){ attend++; totalMin+=workedMin(e,r);
         if(toMin(r.in)>toMin(e.schedule.start)&&!(lv&&lv.t==='am'))lateCnt++;
         if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))earlyCnt++;
-      } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }
+      } else if(ds<today&&!lv&&!leaveAnyOn(ds,e.id)){ absent++; absWeeks.add(wi); }  // 승인 대기 중인 연차 신청일은 결근으로 보지 않음(승인되면 연차, 반려되면 그때 결근)
     }
   });
   return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size,leave};
