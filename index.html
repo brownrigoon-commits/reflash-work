@@ -578,6 +578,14 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div style="flex:1;"><label class="f" style="margin-top:0;">퇴근</label><input type="time" id="recOut"></div>
   </div>
   <button class="btn y wide" style="margin-top:10px;" onclick="fillSched()">⏰ 정시로 채우기 (근무시간표 대로)</button>
+  <div id="recRptBox" style="display:none;margin-top:10px;padding:11px 12px;border-radius:10px;background:#FFF6E5;border:1.5px solid var(--yellow);">
+    <div style="font-weight:800;font-size:13.5px;margin-bottom:4px;">🙋 본인 신고가 있습니다</div>
+    <div id="recRptTxt" style="font-size:13px;line-height:1.6;"></div>
+    <div class="row" style="margin-top:9px;">
+      <button class="btn p" style="flex:1;padding:9px;font-size:13px;" onclick="rptAccept()">인정 — 신고 시각으로 정정</button>
+      <button class="btn ghost" style="flex:1;padding:9px;font-size:13px;" onclick="rptReject()">반려</button>
+    </div>
+  </div>
   <button class="btn red wide" style="margin-top:8px;" onclick="recAbsent()">🚫 결근 처리</button>
   <button class="btn ghost wide" id="btnOtClear" style="margin-top:8px;display:none;" onclick="clearOt()">🌙 야근 기록 지우기 (출퇴근 기록은 유지)</button>
   <div class="muted" style="margin-top:8px;">앱 사용이 어려운 직원은 관리자가 [정시로 채우기]로 대신 입력하거나, 직원정보에서 [자동 출퇴근]을 켜 주세요. [결근 처리]를 누르면 그날은 결근으로 기록됩니다(자동 출퇴근 직원도 그날 자동입력이 꺼짐). 수동 수정된 기록에는 <span class="tag man">수정</span> 표시가 남습니다.</div>
@@ -587,13 +595,29 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </div>
 </div></div>
 
+<!-- 늦게 찍었을 때: 실제 도착 시각 신고 (직원 본인) -->
+<div class="modal-bg" id="mdLateRpt"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdLateRpt')">‹</button>
+  <h3>실제로 몇 시에 오셨나요?</h3>
+  <div class="muted" id="lrSub"></div>
+  <label class="f">실제 도착 시각</label>
+  <input type="time" id="lrTime">
+  <label class="f">늦게 찍은 이유 (선택)</label>
+  <input type="text" id="lrMemo" placeholder="예: 창고 정리하느라 늦게 찍음" maxlength="60">
+  <div class="muted" style="margin-top:8px;">관리자가 확인한 뒤 인정되면 지각이 아닌 것으로 정정됩니다. 그냥 두면 찍은 시각 그대로 기록됩니다.</div>
+  <div class="row" style="margin-top:16px;">
+    <button class="btn p" style="flex:1;" onclick="saveLateRpt()">신고하기</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdLateRpt')">그냥 두기</button>
+  </div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_111905'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_112230'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -737,9 +761,12 @@ async function doPunch(kind){
   const r=DB.records[ds][punchEmpId]||{};
   if(kind==='in'){
     if(r.in){toast('이미 출근 처리되었습니다');return;}
-    if(toMin(hm)<toMin(e.schedule.start))hm=e.schedule.start; // 일찍 눌러도 정시 출근으로 기록
+    // 일찍 눌러도, 유예(GRACE_MIN) 안에 눌러도 정시 출근으로 기록
+    const late=toMin(hm)-toMin(e.schedule.start);
+    if(late<=GRACE_MIN)hm=e.schedule.start;
     if(r.off){ delete r.off; delete r.manual; } // 취소/결근 표식 위에 다시 출근하는 경우 정리
-    r.in=hm; toast(`${e.name}님 출근 완료! (${hm})`);
+    r.in=hm; window._askLate=(late>GRACE_MIN)?hm:null;   // 유예 넘겼으면 아래에서 신고 받기
+    toast(`${e.name}님 출근 완료! (${hm})`);
   }
   else{
     if(!r.in){toast('출근 기록이 없습니다');return;}
@@ -755,6 +782,8 @@ async function doPunch(kind){
   if(geo.s==='far')r[kind==='in'?'far':'farO']=geo.dist;        // 회사 밖에서 찍음 — 거리(m)
   else if(geo.s==='fail')r[kind==='in'?'far':'farO']=-1;        // 위치 확인 불가
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
+  if(kind==='in'&&window._askLate){ const pid=punchEmpId, pt=window._askLate; window._askLate=null;
+    setTimeout(()=>lateRptOpen(pid,ds,pt),400); }                // 늦게 찍었으면 실제 도착시각 물어보기
   showPunchPop(kind,punchEmpId); // 도시락 +1(출근 시) + 이름 부르는 날씨 인사말
 }
 function undoPunch(){ // 잘못 누른 출퇴근 되돌리기 (오늘 기록, 마지막 단계부터)
@@ -1450,6 +1479,20 @@ function openRec(id,ds){
   document.getElementById('recIn').value=r.in||'';
   document.getElementById('recOut').value=r.out||'';
   document.getElementById('btnOtClear').style.display=r.otOut?'block':'none';
+  const box=document.getElementById('recRptBox');
+  if(r.rin){
+    box.style.display='block';
+    document.getElementById('recRptTxt').innerHTML=
+      `찍은 시각 <b>${r.in}</b> → 본인 신고 <b>${r.rin}</b>`
+      +(r.rmemo?`<br>사유: ${r.rmemo}`:'')
+      +(r.rok===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
+        :r.rok===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨</span>':'');
+  } else box.style.display='none';
+  if(r.far!=null||r.farO!=null){
+    const t=[]; if(r.far!=null)t.push('출근 '+(r.far<0?'위치 확인 불가':r.far+'m 떨어짐'));
+    if(r.farO!=null)t.push('퇴근 '+(r.farO<0?'위치 확인 불가':r.farO+'m 떨어짐'));
+    document.getElementById('recSub').innerHTML+=`<br>📍 <b style="color:#D95B23;">${t.join(' · ')}</b>`;
+  }
   openM('mdRec');
 }
 function fillSched(){
@@ -2412,6 +2455,47 @@ function handleEvents(events){
     const keep={}; keys.slice(-150).forEach(k=>keep[k]=events[k]);
     cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
   }
+}
+/* ================== 출근 유예 · 지각 신고 ==================
+   출근시간 +GRACE_MIN 까지는 정시 출근으로 인정(도착해서 짐 놓고 찍는 시간).
+   그보다 늦게 찍으면 본인이 "실제 도착 시각"을 신고할 수 있고, 관리자가 인정하면 정정된다.
+   기록 항목: r.rin(신고 시각) r.rmemo(사유) r.rok(1=인정, 0=반려) */
+const GRACE_MIN=10;
+function lateRptOpen(empId,ds,punched){
+  const e=emp(empId); if(!e)return;
+  window._lrEmp=empId; window._lrDs=ds;
+  document.getElementById('lrSub').innerHTML=
+    `${e.name}님 · ${ds}<br>찍은 시각 <b>${punched}</b> — 근무 시작은 ${e.schedule.start} 입니다.`;
+  document.getElementById('lrTime').value=e.schedule.start;
+  document.getElementById('lrMemo').value='';
+  openM('mdLateRpt');
+}
+function saveLateRpt(){
+  const empId=window._lrEmp, ds=window._lrDs;
+  const t=document.getElementById('lrTime').value;
+  const memo=document.getElementById('lrMemo').value.trim();
+  if(!t){ toast('실제 도착 시각을 골라 주세요'); return; }
+  const r=(DB.records[ds]||{})[empId]; if(!r){ closeM('mdLateRpt'); return; }
+  if(toMin(t)>toMin(r.in)){ toast('찍은 시각보다 늦은 시각은 신고할 수 없습니다'); return; }
+  r.rin=t; if(memo)r.rmemo=memo; delete r.rok;
+  DB.records[ds][empId]=r; save(); queueRec(ds,empId);
+  closeM('mdLateRpt'); renderKiosk();
+  toast('신고했습니다. 관리자 확인 후 반영됩니다');
+}
+/* ── 관리자: 신고 확인 ── */
+function rptAccept(){
+  const r=recOf(recDate,recEmpId); if(!r||!r.rin)return;
+  document.getElementById('recIn').value=r.rin;      // 입력칸에 반영 → [저장] 누르면 확정
+  r.rok=1; r.in=r.rin; r.manual=true;
+  DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
+  openRec(recEmpId,recDate); recRerender();
+  toast('신고를 인정했습니다 — 출근 '+r.rin+'로 정정');
+}
+function rptReject(){
+  const r=recOf(recDate,recEmpId); if(!r||!r.rin)return;
+  r.rok=0; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
+  openRec(recEmpId,recDate); recRerender();
+  toast('신고를 반려했습니다 — 찍은 시각 그대로 둡니다');
 }
 /* ================== 위치 확인 출퇴근 ==================
    출퇴근 버튼을 누른 순간에만 GPS를 1회 읽는다(상시 추적 아님 — 법적으로도 이 방식이 안전).
