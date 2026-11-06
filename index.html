@@ -620,6 +620,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </select>
   <label class="f">시작일</label>
   <input type="date" id="lqFrom" onchange="lqCalc()">
+  <div class="muted" id="lqPastWarn" style="display:none;color:#C0392B;font-size:12px;margin-top:4px;">지난 날짜는 신청할 수 없습니다. 관리자에게 말씀해 주세요.</div>
   <label class="f">종료일 <span class="muted" style="font-weight:400;">(하루만 쓰면 비워 두세요)</span></label>
   <input type="date" id="lqTo" onchange="lqCalc()">
   <label class="f">사유 (선택)</label>
@@ -672,7 +673,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_121510'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_175543'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -728,6 +729,7 @@ let adminOK=false, pendingPage=null;
 function go(p,needAdmin){
   if(p==='set'&&!isOwnerDev()){ toast('설정은 메인 관리자 기기에서만 열 수 있습니다'); return; }
   if(p==='pay'&&!canPriv()){ toast('급여는 관리자 권한 기기에서만 볼 수 있습니다'); return; }
+  if(p==='leave'&&isStaffDev())needAdmin=false;   // 직원은 연차 탭을 비밀번호 없이 — 단 본인 것만 보인다(renderLeave)
   if(needAdmin&&p!=='status'&&!adminOK){ pendingPage=p; document.getElementById('pinInput').value=''; openM('mdPin'); setTimeout(()=>document.getElementById('pinInput').focus(),150); return; }
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
   document.getElementById('pg-'+p).classList.add('on');
@@ -837,6 +839,8 @@ async function doPunch(kind){
       if(toMin(hm)-toMin(e.schedule.end)>=OT_MIN)r.otOut=hm;
       hm=e.schedule.end;
     }
+    // 출근과 같은 유예를 퇴근에도 준다 — 1분 일찍 눌렀다고 조퇴(0.5일 공제)가 되면 안 된다
+    else if(toMin(e.schedule.end)-toMin(hm)<=GRACE_MIN)hm=e.schedule.end;
     r.out=hm; toast(`${e.name}님 퇴근 완료! 수고하셨습니다 (${r.otOut?r.otOut:hm})`);
   }
   if(geo.s==='far')r[kind==='in'?'far':'farO']=geo.dist;        // 회사 밖에서 찍음 — 거리(m)
@@ -883,18 +887,30 @@ function workedMin(e,r){
 }
 /* ── 야근: 정해진 퇴근시간 이후 근무 (실제 퇴근 누른 시각 otOut 또는 관리자가 고친 퇴근시각 기준) ── */
 const OT_MIN=30; // 퇴근시간보다 30분 이상 늦게 퇴근을 누르면 야근으로 기록
+function otEndMin(e,r){ // 야근 종료로 "인정"할 시각(분). 없으면 null
+  if(r.otE){                                  // 직원이 직접 입력한 날
+    if(r.otOk===1)return toMin(r.otE);        //  · 관리자가 인정 → 반영
+    return null;                               //  · 대기·반려 → 미반영 (반려면 자동포착분도 제외)
+  }
+  const c=[toMin(r.out),toMin(r.otOut)].filter(x=>x!=null);   // 직원 입력이 없으면 자동 포착분
+  return c.length?Math.max(...c):null;
+}
 function otMin(e,r,d){
   if(!r||!r.in)return 0;
-  const cand=[toMin(r.out),toMin(r.otOut)];
-  if(r.otE&&r.otOk!==0)cand.push(toMin(r.otE));   // 직원이 직접 입력한 야근 (반려된 건 제외)
-  const outs=cand.filter(x=>x!=null);
-  if(!outs.length)return 0;
-  return Math.max(0,Math.max(...outs)-toMin(e.schedule.end));
+  const end=otEndMin(e,r); if(end==null)return 0;
+  return Math.max(0,end-toMin(e.schedule.end));
+}
+function otPendMin(e,r){ // 아직 확인하지 않은(미반영) 야근 시간
+  if(!r||!r.in||!r.otE||r.otOk!=null)return 0;
+  return Math.max(0,toMin(r.otE)-toMin(e.schedule.end));
 }
 function fmtHM(min){ const h=Math.floor(min/60),m=min%60; return h?(m?`${h}시간 ${m}분`:`${h}시간`):`${m}분`; }
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
 function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
+function esc(s){ // 클라우드에서 온 글자(사유·이름 등)를 화면에 넣을 때 반드시 거친다
+  return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function leaveLive(x){ return !!(x&&!x.del&&!x.st); }   // 확정된 연차만 (st: 'w'=대기 'x'=반려)
 function leaveOn(ds,empId){ // 그날 확정된 연차 — 없으면 null
   const it=leavesDB().items;
@@ -951,7 +967,7 @@ function monthAgg(e,y,m){
       if(r&&r.in){ attend++; totalMin+=workedMin(e,r);
         if(toMin(r.in)>toMin(e.schedule.start)&&!(lv&&lv.t==='am'))lateCnt++;
         if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))earlyCnt++;
-      } else if(ds<today&&!lv&&!leaveAnyOn(ds,e.id)){ absent++; absWeeks.add(wi); }  // 승인 대기 중인 연차 신청일은 결근으로 보지 않음(승인되면 연차, 반려되면 그때 결근)
+      } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }   // 확정된 연차만 결근 면제 — 대기 중 신청은 결근으로 두고 정산표에 '확인 대기'로 경고한다
     }
   });
   return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size,leave};
@@ -1560,7 +1576,7 @@ function openRec(id,ds){
     const m=toMin(r.otE)-toMin(emp(id).schedule.end);
     document.getElementById('recOtTxt').innerHTML=
       `본인 입력: <b>${r.otE}</b>까지 — 야근 <b>${fmtHM(Math.max(0,m))}</b>`
-      +(r.otMemo?`<br>내용: ${r.otMemo}`:'')
+      +(r.otMemo?`<br>내용: ${esc(r.otMemo)}`:'')
       +(r.otOut?`<br><span class="muted">자동 포착: ${r.otOut}</span>`:'')
       +(r.otOk===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
         :r.otOk===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨 (야근에서 제외)</span>'
@@ -1571,7 +1587,7 @@ function openRec(id,ds){
     box.style.display='block';
     document.getElementById('recRptTxt').innerHTML=
       `찍은 시각 <b>${r.in}</b> → 본인 신고 <b>${r.rin}</b>`
-      +(r.rmemo?`<br>사유: ${r.rmemo}`:'')
+      +(r.rmemo?`<br>사유: ${esc(r.rmemo)}`:'')
       +(r.rok===1?'<br><span style="color:#1E7F4F;font-weight:700;">✓ 인정됨</span>'
         :r.rok===0?'<br><span style="color:#C0392B;font-weight:700;">✗ 반려됨</span>':'');
   } else box.style.display='none';
@@ -1608,9 +1624,12 @@ function saveRec(){
     DB.records[recDate][recEmpId]={off:true,manual:true};
   }
   else{
-    const prev=recOf(recDate,recEmpId)||{}, nr={in:i||null,out:o||null,manual:true};
-    // 실제 야근 시각(otOut)은 관리자가 [야근 기록 지우기]를 누르기 전까지 유지 — 그냥 저장만 해도 사라지지 않게
-    if(prev.otOut&&o&&toMin(prev.otOut)>toMin(o))nr.otOut=prev.otOut;
+    // 기존 기록을 그대로 물려받고 출퇴근 시각만 바꾼다.
+    // (예전에는 새 객체로 갈아끼워서 지각 신고·야근 입력·사유·위치 표식이 통째로 지워졌다)
+    const prev=recOf(recDate,recEmpId)||{};
+    const nr=Object.assign({},prev,{in:i||null,out:o||null,manual:true});
+    delete nr.off;                                   // 시각을 넣었으므로 결근 표식은 해제
+    if(prev.otOut&&o&&toMin(prev.otOut)<=toMin(o))delete nr.otOut;  // 퇴근을 더 늦게 고쳤으면 자동포착분은 불필요
     DB.records[recDate][recEmpId]=nr;
   }
   save(); queueRec(recDate,recEmpId); closeM('mdRec'); recRerender(); toast('저장되었습니다');
@@ -1884,6 +1903,7 @@ function leaveItemsOf(Y,empId){
 function leaveUsed(e,Y){ return leaveItemsOf(Y,e.id).reduce((s,x)=>s+leaveDays(x),0); }
 function leaveEmps(Y){ return DB.employees.filter(e=>e.joinDate<=`${Y}-12-31`&&(!e.leaveDate||e.leaveDate>=`${Y}-01-01`)); }
 function renderLeave(){
+  if(isStaffDev()){ renderLeaveMine(); return; }     // 직원 화면 — 본인 것만
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display=canManage()?'block':'none';
   renderLeaveWait();
   const Y=leaveYear, can=canManage();
@@ -1899,7 +1919,7 @@ function renderLeave(){
     const left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;
     const tb=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
     h+=`<div class="lv-row"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <div style="font-weight:800;font-size:15.5px;">${e.name} ${tb}</div>
+      <div style="font-weight:800;font-size:15.5px;">${esc(e.name)} ${tb}</div>
       <div style="font-size:13px;white-space:nowrap;">발생 ${can?`<input class="lv-grant" inputmode="decimal" value="${g}" title="눌러서 고치기" onchange="setGrant('${e.id}',this.value)">`:`<b>${g}</b>`}일${auto?'<span class="muted">(자동)</span>':''}</div></div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${u}일</b></span><span>잔여 <b style="font-size:16px;color:${left<0?'var(--red)':'var(--purple)'};">${left}일</b></span></div>
       <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div></div>`;
@@ -1911,7 +1931,7 @@ function renderLeave(){
   items.forEach(x=>{
     const e=emp(x.e); if(!e)return;
     const d=new Date(x.d+'T00:00:00');
-    h+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b> ${e.name} <span class="tag leave">${LEAVE_NM[x.t]}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${String(x.memo).replace(/</g,'&lt;')}</div>`:''}</div>
+    h+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b> ${esc(e.name)} <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div>
       ${can?`<button class="btn red" style="padding:5px 10px;font-size:12px;border-radius:8px;" onclick="delLeave('${x.id}')">삭제</button>`:''}</div>`;
   });
   document.getElementById('leaveBody').innerHTML=h+'</div>';
@@ -2049,14 +2069,14 @@ function renderSettle(y,m){
 
 /* ================== 야근 현황판 (급여 탭 맨 위) ================== */
 function renderOtBoard(y,m){
-  const last=new Date(y,m+1,0).getDate(), logs=[], per={};
+  const last=new Date(y,m+1,0).getDate(), logs=[], per={}, pend=[];
   DB.employees.forEach(e=>{
     for(let dd=1;dd<=last;dd++){
       const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
       if(!r||!r.in)continue;
       if(!isWorkday(e,d)){ const wm=workedMin(e,{in:r.in,out:r.otOut||r.out}); if(wm>0)logs.push({e,ds,d,min:wm,out:r.otOut||r.out,hol:true}); continue; }
-      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:(r.otE&&r.otOk!==0)?r.otE:(r.otOut||r.out),
-        wait:!!(r.otE&&r.otOk==null), memo:r.otMemo||''});
+      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:(r.otOk===1&&r.otE)?r.otE:(r.otOut||r.out),memo:r.otMemo||''});
+      const pm=otPendMin(e,r); if(pm>0)pend.push({e,ds,d,min:pm,out:r.otE,memo:r.otMemo||''});
     }
   });
   logs.forEach(l=>{ const p=per[l.e.id]=per[l.e.id]||{e:l.e,min:0,cnt:0,last:''}; p.min+=l.min; p.cnt++; if(l.ds>p.last)p.last=l.ds; });
@@ -2076,7 +2096,20 @@ function renderOtBoard(y,m){
     });
     h+='</div>';
   }
-  h+=`<div class="muted" style="margin:0 4px 6px;">직원이 출퇴근 화면에서 [🌙 야근 입력하기]로 직접 적을 수 있고, 퇴근시간보다 ${OT_MIN}분 이상 늦게 퇴근을 누르면 자동으로도 잡힙니다. <b>⏳ 확인 대기</b>는 아직 인정하지 않은 건으로, 기록을 눌러 인정·반려하세요. 급여는 정시 기준 그대로입니다.</div>`;
+  if(pend.length){
+    const pt=pend.reduce((s,l)=>s+l.min,0);
+    h+=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
+      <div style="font-weight:800;margin-bottom:4px;">⏳ 확인 대기 ${fmtHM(pt)} — 아직 집계에 들어가지 않았습니다</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px;">직원이 입력한 야근입니다. 기록을 눌러 [인정]해야 위 숫자에 반영됩니다.</div>`;
+    pend.sort((a,b)=>a.ds<b.ds?1:-1).forEach(l=>{
+      h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}>
+        <div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${esc(l.e.name)}
+        <span class="muted">${esc(l.out||'')}까지</span>${l.memo?`<div class="muted" style="font-size:11.5px;">${esc(l.memo)}</div>`:''}</div>
+        <div class="plus" style="color:#D95B23;">+${fmtHM(l.min)}</div></div>`;
+    });
+    h+='</div>';
+  }
+  h+=`<div class="muted" style="margin:0 4px 6px;">직원이 출퇴근 화면에서 [🌙 야근 입력하기]로 직접 적고, 관리자가 기록을 눌러 <b>[인정]</b>해야 집계에 들어갑니다. 퇴근시간보다 ${OT_MIN}분 이상 늦게 퇴근을 누르면 자동으로도 잡힙니다(이건 바로 반영). 급여는 정시 기준 그대로입니다.</div>`;
   return h;
 }
 
@@ -2624,7 +2657,47 @@ function handleEvents(events){
 /* ================== 연차 신청 (직원) ==================
    직원이 신청하면 st:'w'(대기)로 들어가고, 관리자가 승인하면 st 를 지워 확정된다.
    반려는 st:'x'. 대기·반려 건은 연차 사용일수에 들어가지 않는다. */
+function isStaffDev(){ const c=cloudCfg(); return !!(c&&c.role==='staff'); }
 function myEmpId(){ const c=cloudCfg(); return (c&&c.role==='staff'&&c.myEmpId)?c.myEmpId:null; }
+function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (동료 정보 비노출)
+  const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display='none';
+  const Y=leaveYear, id=myEmpId(), e=id?emp(id):null;
+  document.getElementById('leaveLabel').textContent=`${Y}년 내 연차`;
+  const box=document.getElementById('leaveWaitBox'); if(box)box.innerHTML='';
+  if(!e){
+    document.getElementById('leaveBody').innerHTML=
+      '<div class="card"><div class="muted">본인 확인이 안 됩니다. 받으신 초대 링크로 다시 입장해 주세요.</div></div>';
+    return;
+  }
+  const g=leaveGrant(e,Y), u=leaveUsed(e,Y), left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;
+  let s=`<div class="lv-sum"><div><span>총 발생</span><b>${num1(g)}일</b></div><div><span>사용</span><b>${num1(u)}일</b></div>
+    <div><span>잔여</span><b style="color:${left<0?'var(--red)':'var(--purple)'};">${num1(left)}일</b></div></div>
+    <div class="card"><div style="font-weight:800;margin-bottom:6px;">${esc(e.name)}님 연차</div>
+    <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div>
+    <div class="muted" style="margin-top:8px;font-size:12.5px;">발생 일수는 근로기준법 기준 추정치입니다. 실제와 다르면 관리자에게 말씀해 주세요.</div></div>`;
+
+  const wait=leaveWaiting(id);
+  if(wait.length){
+    s+=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
+      <div style="font-weight:800;margin-bottom:6px;">⏳ 승인 대기 ${wait.length}건</div>`;
+    wait.forEach(x=>{
+      s+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
+        <div>${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
+        <span class="tag man" style="flex-shrink:0;">대기</span></div>`;
+    });
+    s+='<div class="muted" style="margin-top:8px;font-size:12px;">관리자가 승인하면 확정됩니다. 승인 전까지는 그날이 결근으로 잡히니, 급하면 관리자에게 알려 주세요.</div></div>';
+  }
+
+  const items=leaveItemsOf(Y,id);
+  s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
+  if(!items.length)s+='<div class="muted">아직 쓴 연차가 없습니다.</div>';
+  items.forEach(x=>{
+    const d=new Date(x.d+'T00:00:00');
+    s+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b>
+      <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div></div>`;
+  });
+  document.getElementById('leaveBody').innerHTML=s+'</div>';
+}
 function openLvReq(){
   const sel=myEmpId();
   if(!sel&&!canManage()){ toast('본인 확인이 안 됩니다. 초대 링크로 다시 입장해 주세요'); return; }
@@ -2653,6 +2726,7 @@ function lqDays(){ // 신청 대상 근무일 목록
   const t=document.getElementById('lqType').value;
   if(!from||to<from)return [];
   if(t!=='full'&&to!==from)return [];
+  if(from<todayStr())return [];      // 지난 날짜 신청 금지 — 과거 결근을 사후에 덮는 것을 막는다
   const out=[];
   for(let d=new Date(from+'T00:00:00');fmtD(d)<=to;d.setDate(d.getDate()+1)){
     const ds=fmtD(d);
@@ -2666,7 +2740,9 @@ function lqCalc(){
   const box=document.getElementById('lqCalcBox'); if(!box)return;
   const e=emp(window._lqEmp); const t=document.getElementById('lqType').value;
   const days=lqDays();
-  if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (휴무일·이미 신청한 날 제외)</span>'; return; }
+  const pw=document.getElementById('lqPastWarn');
+  if(pw)pw.style.display=(document.getElementById('lqFrom').value<todayStr())?'block':'none';
+  if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (지난 날짜·휴무일·이미 신청한 날 제외)</span>'; return; }
   const use=days.length*(t==='full'?1:0.5);
   const Y=+days[0].slice(0,4), rest=leaveGrant(e,Y)-leaveUsed(e,Y);
   box.innerHTML=`${days.length}일 신청 · <span style="color:var(--purple);">${String(use).replace(/\.0$/,'')}일 차감</span>`
@@ -2674,9 +2750,11 @@ function lqCalc(){
 }
 function saveLvReq(){
   const e=emp(window._lqEmp); if(!e)return;
+  if(isStaffDev()&&e.id!==myEmpId()){ toast('본인 것만 신청할 수 있습니다'); return; }
   const t=document.getElementById('lqType').value;
   const memo=document.getElementById('lqMemo').value.trim();
   const days=lqDays();
+  if(document.getElementById('lqFrom').value<todayStr()){ toast('지난 날짜는 신청할 수 없습니다'); return; }
   if(!days.length){ toast('신청할 근무일이 없습니다'); return; }
   const add={};
   days.forEach(ds=>{
@@ -2684,23 +2762,33 @@ function saveLvReq(){
     add[id]={e:e.id,d:ds,t,memo,ts:Date.now(),st:'w'};
   });
   Object.assign(leavesDB().items,add); save();
-  if(cloudOn())cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)}).catch(()=>{});
   closeM('mdLvReq'); leaveYear=+days[0].slice(0,4); renderLeave();
-  toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`);
+  if(cloudOn()){
+    cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)})
+      .then(()=>toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`))
+      .catch(()=>toast('⚠️ 인터넷이 안 되어 관리자에게 전달되지 않았습니다. 연결 후 다시 신청해 주세요'));
+  } else toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다`);
 }
 /* ── 관리자: 승인 / 반려 ── */
 function lvApprove(id){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const x=leavesDB().items[id]; if(!x)return;
-  delete x.st; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave();
-  toast(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
+  delete x.st; x.ts=Date.now(); save(); renderLeave();
+  const nm=(emp(x.e)||{}).name||'';
+  if(cloudOn())cfetch('/leaves/items/'+id,{method:'PUT',body:JSON.stringify(x)})
+    .then(()=>toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`))
+    .catch(()=>toast('⚠️ 인터넷이 안 되어 승인이 저장되지 않았습니다. 다시 시도해 주세요'));
+  else toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
 }
 function lvRejectOne(id){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const x=leavesDB().items[id]; if(!x)return;
   if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 신청을 반려할까요?`))return;
   x.st='x'; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave();
   toast('반려했습니다');
 }
 function lvApproveAll(){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const w=leaveWaiting(); if(!w.length)return;
   if(!confirm(`대기 중인 ${w.length}건을 모두 승인할까요?`))return;
   w.forEach(x=>{ const it=leavesDB().items[x.id]; if(it){ delete it.st; it.ts=Date.now(); leavePut('/items/'+x.id,it); } });
@@ -2717,8 +2805,8 @@ function renderLeaveWait(){
   w.forEach(x=>{
     const nm=(emp(x.e)||{}).name||'';
     s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">
-      <div style="min-width:0;font-size:13.5px;"><b>${nm}</b> ${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]}
-      ${x.memo?`<div class="muted" style="font-size:11.5px;">${x.memo}</div>`:''}</div>
+      <div style="min-width:0;font-size:13.5px;"><b>${esc(nm)}</b> ${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}
+      ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
       ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;">
         <button class="btn p" style="padding:7px 11px;font-size:12.5px;" onclick="lvApprove('${x.id}')">승인</button>
         <button class="btn ghost" style="padding:7px 11px;font-size:12.5px;" onclick="lvRejectOne('${x.id}')">반려</button>
@@ -2736,6 +2824,7 @@ function otRptOpen(empId,ds){
   empId=empId||punchEmpId; ds=ds||todayStr();
   const e=emp(empId), r=recOf(ds,empId);
   if(!e)return;
+  if(isStaffDev()&&empId!==myEmpId()){ toast('본인 것만 입력할 수 있습니다'); return; }
   if(!r||!r.in){ toast('출근 기록이 있어야 야근을 입력할 수 있습니다'); return; }
   window._otEmp=empId; window._otDs=ds;
   document.getElementById('otrSub').innerHTML=
@@ -2756,6 +2845,7 @@ function otrCalc(){
 }
 function saveOtRpt(){
   const empId=window._otEmp, ds=window._otDs, e=emp(empId);
+  if(isStaffDev()&&empId!==myEmpId()){ toast('본인 것만 입력할 수 있습니다'); return; }
   const v=document.getElementById('otrEnd').value;
   const memo=document.getElementById('otrMemo').value.trim();
   if(!v){ toast('야근을 마친 시각을 골라 주세요'); return; }
@@ -2777,11 +2867,13 @@ function delOtRpt(){
 }
 /* ── 관리자: 야근 확인 ── */
 function otAccept(){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const r=recOf(recDate,recEmpId); if(!r||!r.otE)return;
   r.otOk=1; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
   openRec(recEmpId,recDate); recRerender(); toast('야근을 인정했습니다');
 }
 function otReject(){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const r=recOf(recDate,recEmpId); if(!r||!r.otE)return;
   r.otOk=0; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
   openRec(recEmpId,recDate); recRerender(); toast('야근 입력을 반려했습니다');
@@ -2802,6 +2894,7 @@ function lateRptOpen(empId,ds,punched){
 }
 function saveLateRpt(){
   const empId=window._lrEmp, ds=window._lrDs;
+  if(isStaffDev()&&empId!==myEmpId()){ toast('본인 것만 신고할 수 있습니다'); return; }
   const t=document.getElementById('lrTime').value;
   const memo=document.getElementById('lrMemo').value.trim();
   if(!t){ toast('실제 도착 시각을 골라 주세요'); return; }
@@ -2814,6 +2907,7 @@ function saveLateRpt(){
 }
 /* ── 관리자: 신고 확인 ── */
 function rptAccept(){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const r=recOf(recDate,recEmpId); if(!r||!r.rin)return;
   document.getElementById('recIn').value=r.rin;      // 입력칸에 반영 → [저장] 누르면 확정
   r.rok=1; r.in=r.rin; r.manual=true;
@@ -2822,6 +2916,7 @@ function rptAccept(){
   toast('신고를 인정했습니다 — 출근 '+r.rin+'로 정정');
 }
 function rptReject(){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const r=recOf(recDate,recEmpId); if(!r||!r.rin)return;
   r.rok=0; DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
   openRec(recEmpId,recDate); recRerender();
