@@ -685,7 +685,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_214344'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_222458'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1202,8 +1202,15 @@ function weekOwnsMonth(mon,y,m){ // 이 주(월요일 mon)가 y년 m월 소유�
 function judgeable(e,ds,today){
   if(ds<today)return true;
   if(ds>today)return false;
+  const s=(e&&e.schedule)||{};
+  let end=toMin(s.end), st=toMin(s.start);
+  if(end==null)end=18*60;
+  if(st==null)st=9*60;
+  // 자정을 넘기는 일정(예: 20:00~04:00)은 그날을 판정하지 않는다 — 다음 날부터 본다.
+  // 그대로 두면 04:00+1h=05:01 부터 '판정 가능' 이라, 출근 15시간 전부터 결근으로 찍혔다.
+  if(end<=st)return false;
   const n=new Date();
-  return (n.getHours()*60+n.getMinutes())>toMin(e.schedule.end)+60;
+  return (n.getHours()*60+n.getMinutes())>end+60;
 }
 function isAbsentOn(e,d,today){ // 그날이 결근인가 (근무일·판정시점 지남·기록없음·확정연차 아님)
   if(!isWorkday(e,d))return false;
@@ -2100,9 +2107,12 @@ function floor10(n){ return Math.floor(n/10)*10; }
    월중 입·퇴사자에게 한 달치를 전액 주던 것을 막는다(박은성 2026-10: 519,355원 차이). */
 function workedDaysInMonth(e,y,m){
   const total=new Date(y,m+1,0).getDate();
+  // 날짜가 ISO 모양이 아니면 Invalid Date 가 되어 일할계산이 조용히 안 걸렸다 → 아예 무시한다
+  const pd=v=>{ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return null;
+                const x=new Date(v+'T00:00:00'); return isNaN(+x)?null:x; };
   let s=new Date(y,m,1), en=new Date(y,m+1,0);
-  if(e.joinDate){ const j=new Date(e.joinDate+'T00:00:00'); if(j>s)s=j; }
-  if(e.leaveDate){ const l=new Date(e.leaveDate+'T00:00:00'); if(l<en)en=l; }
+  const j=pd(e.joinDate); if(j&&j>s)s=j;
+  const l=pd(e.leaveDate); if(l&&l<en)en=l;
   const days=en>=s?Math.round((en-s)/864e5)+1:0;
   return {days:Math.max(0,Math.min(days,total)),total};
 }
@@ -2114,25 +2124,26 @@ function calcRegular(e,y,m){
   const absent=o.absent!=null?nn(o.absent):agg.absent;
   const early=o.early!=null?nn(o.early):agg.earlyCnt;
   const absentW=o.absentW!=null?nn(o.absentW):agg.absentW;
-  const wage=Math.round(e.salary/209);
-  const base=wage*174, jh=e.salary-base;      // 기본급+주휴 = 월급 (반올림 오차 제거)
+  const sal=Math.max(0,Number(e.salary)||0);   // 문자열·null 도 받아낸다
+  const wage=Math.round(sal/209);
+  const base=wage*174, jh=sal-base;      // 기본급+주휴 = 월급 (반올림 오차 제거)
   const dedDays=absent+early*0.5;
   const dedWork=Math.round(wage*8*dedDays);
   // 주휴 공제는 소정근로일 비례. 주 2일 근무자에게 8시간 전액을 물리면 과공제다(52,824원).
   const wk=(e.schedule&&e.schedule.days&&e.schedule.days.length)||5;
   const dedJh=Math.round(wage*8*Math.min(1,wk/5)*absentW);
   const wd=workedDaysInMonth(e,y,m);
-  const pro=wd.days>=wd.total?e.salary:Math.round(e.salary*wd.days/wd.total);
-  const dedPro=e.salary-pro;
+  const pro=wd.days>=wd.total?sal:Math.round(sal*wd.days/wd.total);
+  const dedPro=sal-pro;
   let net=pro-dedWork-dedJh;
   const floored=net<0; if(floored)net=0;      // 음수 실수령이 그대로 나가던 것을 막는다
   return {wage,base,jh,absent,early,absentW,dedWork,dedJh,dedPro,
           days:wd.days,daysTot:wd.total,pro,floored,
-          total:e.salary-net,net,agg};
+          total:sal-net,net,agg};
 }
 function calcFree(e,y,m){
   const ym=`${y}-${String(m+1).padStart(2,'0')}`, o=ov(ym,e.id);
-  const fee=Math.max(0,Number(o.fee!=null?o.fee:e.salary)||0);   // 음수·빈 값 차단
+  const fee=Math.max(0,Number(o.fee!=null?o.fee:e.salary)||0);   // 음수·빈 값·문자열 차단
   const t3=floor10(fee*0.03), t03=floor10(fee*0.003);
   return {fee,t3,t03,sum:t3+t03,net:fee-t3-t03};
 }
@@ -2623,7 +2634,7 @@ function weekDetail(e,y,m){ // 최대 5주로 병합
       if(lv&&lv.t==='full'){out[slot].att++;continue;} // 연차일은 출근으로 간주 (유급)
       if(r&&r.in){out[slot].att++; if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))out[slot].early++;}
       else if(lv)out[slot].att++;
-      else if(fmtD(d)<today)out[slot].abs++;
+      else if(judgeable(e,fmtD(d),today))out[slot].abs++;   // monthAgg·엑셀과 같은 판정 시점을 쓴다 (주차칸 합계 = 결근일수)
     }
   });
   while(out.length<5)out.push({abs:0,early:0,att:0,sched:0});
