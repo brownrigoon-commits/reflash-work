@@ -335,7 +335,9 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <span id="leaveLabel"></span>
       <button onclick="leaveMove(1)">›</button>
     </div>
-    <button class="btn y wide" id="btnLeaveAdd" onclick="openLeaveForm()">＋ 연차 · 반차 등록</button>
+    <button class="btn p wide" id="btnLeaveReq" onclick="openLvReq()">🌴 연차 · 반차 신청하기</button>
+    <button class="btn y wide" id="btnLeaveAdd" style="margin-top:8px;" onclick="openLeaveForm()">＋ 연차 · 반차 등록 (관리자)</button>
+    <div id="leaveWaitBox" style="margin-top:14px;"></div>
     <div id="leaveBody" style="margin-top:14px;"></div>
   </div>
 
@@ -604,6 +606,31 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </div>
 </div></div>
 
+<!-- 연차 신청 (직원 본인) -->
+<div class="modal-bg" id="mdLvReq"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdLvReq')">‹</button>
+  <h3>🌴 연차 신청</h3>
+  <div class="muted" id="lqSub"></div>
+  <label class="f">종류</label>
+  <select id="lqType" onchange="lqCalc()">
+    <option value="full">연차 (하루 · 1일 차감)</option>
+    <option value="am">오전 반차 (0.5일 차감)</option>
+    <option value="pm">오후 반차 (0.5일 차감)</option>
+  </select>
+  <label class="f">시작일</label>
+  <input type="date" id="lqFrom" onchange="lqCalc()">
+  <label class="f">종료일 <span class="muted" style="font-weight:400;">(하루만 쓰면 비워 두세요)</span></label>
+  <input type="date" id="lqTo" onchange="lqCalc()">
+  <label class="f">사유 (선택)</label>
+  <input type="text" id="lqMemo" placeholder="예: 개인 사정" maxlength="60">
+  <div id="lqCalcBox" style="margin-top:10px;font-weight:800;text-align:center;"></div>
+  <div class="muted" style="margin-top:8px;">관리자가 승인하면 확정됩니다. 승인 전에는 연차가 차감되지 않습니다.</div>
+  <div class="row" style="margin-top:16px;">
+    <button class="btn p" style="flex:1;" onclick="saveLvReq()">신청하기</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdLvReq')">닫기</button>
+  </div>
+</div></div>
+
 <!-- 야근 입력 (직원 본인) -->
 <div class="modal-bg" id="mdOtRpt"><div class="modal">
   <button class="modal-back" onclick="closeM('mdOtRpt')">‹</button>
@@ -644,7 +671,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_120726'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_121016'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -867,10 +894,21 @@ function fmtHM(min){ const h=Math.floor(min/60),m=min%60; return h?(m?`${h}시�
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
 function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
-function leaveOn(ds,empId){ // 그날 등록된 연차(삭제 표식 제외) — 없으면 null
+function leaveLive(x){ return !!(x&&!x.del&&!x.st); }   // 확정된 연차만 (st: 'w'=대기 'x'=반려)
+function leaveOn(ds,empId){ // 그날 확정된 연차 — 없으면 null
   const it=leavesDB().items;
-  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.e===empId&&x.d===ds)return x; }
+  for(const k in it){ const x=it[k]; if(leaveLive(x)&&x.e===empId&&x.d===ds)return x; }
   return null;
+}
+function leaveAnyOn(ds,empId){ // 대기 중인 신청까지 포함해 찾기 (중복 신청 방지용)
+  const it=leavesDB().items;
+  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.st!=='x'&&x.e===empId&&x.d===ds)return x; }
+  return null;
+}
+function leaveWaiting(empId){ // 승인 대기 목록
+  return Object.entries(leavesDB().items)
+    .filter(([id,x])=>x&&!x.del&&x.st==='w'&&(!empId||x.e===empId))
+    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
 }
 function leaveDays(x){ return x.t==='full'?1:0.5; }
 function dayStatus(e,d){ // {tag, label}
@@ -1838,12 +1876,14 @@ function legalLeave(e,Y){
 }
 function leaveGrant(e,Y){ const g=(leavesDB().grants[Y]||{})[e.id]; return g!=null?g:legalLeave(e,Y); }
 function leaveItemsOf(Y,empId){
-  return Object.entries(leavesDB().items).filter(([id,x])=>x&&!x.del&&String(x.d).slice(0,4)===String(Y)&&(!empId||x.e===empId))
+  return Object.entries(leavesDB().items).filter(([id,x])=>leaveLive(x)&&String(x.d).slice(0,4)===String(Y)&&(!empId||x.e===empId))
     .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?1:-1);
 }
 function leaveUsed(e,Y){ return leaveItemsOf(Y,e.id).reduce((s,x)=>s+leaveDays(x),0); }
 function leaveEmps(Y){ return DB.employees.filter(e=>e.joinDate<=`${Y}-12-31`&&(!e.leaveDate||e.leaveDate>=`${Y}-01-01`)); }
 function renderLeave(){
+  const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display=canManage()?'block':'none';
+  renderLeaveWait();
   const Y=leaveYear, can=canManage();
   document.getElementById('leaveLabel').textContent=`${Y}년 연차`;
   document.getElementById('btnLeaveAdd').style.display=can?'':'none';
@@ -2505,6 +2545,113 @@ function handleEvents(events){
     const keep={}; keys.slice(-150).forEach(k=>keep[k]=events[k]);
     cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
   }
+}
+/* ================== 연차 신청 (직원) ==================
+   직원이 신청하면 st:'w'(대기)로 들어가고, 관리자가 승인하면 st 를 지워 확정된다.
+   반려는 st:'x'. 대기·반려 건은 연차 사용일수에 들어가지 않는다. */
+function myEmpId(){ const c=cloudCfg(); return (c&&c.role==='staff'&&c.myEmpId)?c.myEmpId:null; }
+function openLvReq(){
+  const sel=myEmpId();
+  if(!sel&&!canManage()){ toast('본인 확인이 안 됩니다. 초대 링크로 다시 입장해 주세요'); return; }
+  window._lqEmp=sel||(DB.employees[0]&&DB.employees[0].id);
+  if(!sel){ // 관리자 기기에서는 직원을 고를 수 있게
+    const names=DB.employees.filter(e=>!e.leaveDate).map(e=>e.name).join(', ');
+    const who=prompt('누구의 연차를 신청할까요? 이름을 적어 주세요.'+String.fromCharCode(10)+names);
+    if(!who)return;
+    const f=DB.employees.find(e=>e.name===who.trim());
+    if(!f){ toast('그 이름을 찾지 못했습니다'); return; }
+    window._lqEmp=f.id;
+  }
+  const e=emp(window._lqEmp), Y=new Date().getFullYear();
+  document.getElementById('lqSub').innerHTML=
+    `${e.name}님 · ${Y}년 남은 연차 <b>${(leaveGrant(e,Y)-leaveUsed(e,Y)).toFixed(1).replace('.0','')}일</b>`;
+  document.getElementById('lqType').value='full';
+  document.getElementById('lqFrom').value=todayStr();
+  document.getElementById('lqTo').value='';
+  document.getElementById('lqMemo').value='';
+  lqCalc(); openM('mdLvReq');
+}
+function lqDays(){ // 신청 대상 근무일 목록
+  const e=emp(window._lqEmp); if(!e)return [];
+  const from=document.getElementById('lqFrom').value;
+  const to=document.getElementById('lqTo').value||from;
+  const t=document.getElementById('lqType').value;
+  if(!from||to<from)return [];
+  if(t!=='full'&&to!==from)return [];
+  const out=[];
+  for(let d=new Date(from+'T00:00:00');fmtD(d)<=to;d.setDate(d.getDate()+1)){
+    const ds=fmtD(d);
+    if(!isWorkday(e,d))continue;
+    if(leaveAnyOn(ds,e.id))continue;
+    out.push(ds);
+  }
+  return out;
+}
+function lqCalc(){
+  const box=document.getElementById('lqCalcBox'); if(!box)return;
+  const e=emp(window._lqEmp); const t=document.getElementById('lqType').value;
+  const days=lqDays();
+  if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (휴무일·이미 신청한 날 제외)</span>'; return; }
+  const use=days.length*(t==='full'?1:0.5);
+  const Y=+days[0].slice(0,4), rest=leaveGrant(e,Y)-leaveUsed(e,Y);
+  box.innerHTML=`${days.length}일 신청 · <span style="color:var(--purple);">${String(use).replace(/\.0$/,'')}일 차감</span>`
+    +(use>rest?`<br><span style="color:#C0392B;font-size:12.5px;">남은 연차(${String(rest).replace(/\.0$/,'')}일)보다 많습니다 — 관리자 확인 필요</span>`:'');
+}
+function saveLvReq(){
+  const e=emp(window._lqEmp); if(!e)return;
+  const t=document.getElementById('lqType').value;
+  const memo=document.getElementById('lqMemo').value.trim();
+  const days=lqDays();
+  if(!days.length){ toast('신청할 근무일이 없습니다'); return; }
+  const add={};
+  days.forEach(ds=>{
+    const id='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    add[id]={e:e.id,d:ds,t,memo,ts:Date.now(),st:'w'};
+  });
+  Object.assign(leavesDB().items,add); save();
+  if(cloudOn())cfetch('/leaves/items',{method:'PATCH',body:JSON.stringify(add)}).catch(()=>{});
+  closeM('mdLvReq'); leaveYear=+days[0].slice(0,4); renderLeave();
+  toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`);
+}
+/* ── 관리자: 승인 / 반려 ── */
+function lvApprove(id){
+  const x=leavesDB().items[id]; if(!x)return;
+  delete x.st; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave();
+  toast(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
+}
+function lvRejectOne(id){
+  const x=leavesDB().items[id]; if(!x)return;
+  if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 신청을 반려할까요?`))return;
+  x.st='x'; x.ts=Date.now(); save(); leavePut('/items/'+id,x); renderLeave();
+  toast('반려했습니다');
+}
+function lvApproveAll(){
+  const w=leaveWaiting(); if(!w.length)return;
+  if(!confirm(`대기 중인 ${w.length}건을 모두 승인할까요?`))return;
+  w.forEach(x=>{ const it=leavesDB().items[x.id]; if(it){ delete it.st; it.ts=Date.now(); leavePut('/items/'+x.id,it); } });
+  save(); renderLeave(); toast(`${w.length}건 승인했습니다`);
+}
+function renderLeaveWait(){
+  const box=document.getElementById('leaveWaitBox'); if(!box)return;
+  const mine=myEmpId();
+  const w=leaveWaiting(mine||undefined);        // 직원은 본인 것만, 관리자는 전체
+  if(!w.length){ box.innerHTML=''; return; }
+  const admin=canManage();
+  let s=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
+    <div style="font-weight:800;margin-bottom:6px;">⏳ 승인 대기 ${w.length}건</div>`;
+  w.forEach(x=>{
+    const nm=(emp(x.e)||{}).name||'';
+    s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">
+      <div style="min-width:0;font-size:13.5px;"><b>${nm}</b> ${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]}
+      ${x.memo?`<div class="muted" style="font-size:11.5px;">${x.memo}</div>`:''}</div>
+      ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn p" style="padding:7px 11px;font-size:12.5px;" onclick="lvApprove('${x.id}')">승인</button>
+        <button class="btn ghost" style="padding:7px 11px;font-size:12.5px;" onclick="lvRejectOne('${x.id}')">반려</button>
+      </div>`:'<span class="tag man" style="flex-shrink:0;">대기</span>'}</div>`;
+  });
+  if(admin&&w.length>1)s+=`<button class="btn y wide" style="margin-top:10px;" onclick="lvApproveAll()">전부 승인 (${w.length}건)</button>`;
+  s+='</div>';
+  box.innerHTML=s;
 }
 /* ================== 야근 직접 입력 (직원) ==================
    직원이 본인 야근 종료 시각을 적고, 관리자가 인정/반려한다.
