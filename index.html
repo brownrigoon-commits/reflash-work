@@ -374,9 +374,11 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">🔐 관리자 비밀번호 변경</h3>
-      <input type="password" id="setPin" placeholder="새 비밀번호 (4자리 숫자)" maxlength="4" inputmode="numeric">
+      <input type="password" id="setPin" placeholder="새 비밀번호 (4~16자, 영문 섞어 6자 이상 권장)" maxlength="16" autocomplete="new-password">
       <button class="btn p wide" style="margin-top:10px;" onclick="changePin()">변경하기</button>
-      <div class="muted" style="margin-top:10px;">비밀번호를 한 번 입력한 기기는 계속 기억되어 다시 묻지 않습니다.</div>
+      <div id="pinWeak" class="muted" style="display:none;margin-top:10px;color:#A32020;font-weight:700;"></div>
+      <div class="muted" style="margin-top:10px;">비밀번호를 한 번 입력한 기기는 계속 기억되어 다시 묻지 않습니다.
+      이 비밀번호는 직원이 관리자 권한을 받을 때도 쓰입니다 — 직원에게 알려 주지 마세요.</div>
       <button class="btn ghost wide" style="margin-top:8px;" onclick="lockAdmin()">🔒 이 기기 관리자 기억 끄기 (다시 잠금)</button>
     </div>
     <div class="card">
@@ -679,7 +681,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_195327'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_200456'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -817,11 +819,11 @@ function renderKiosk(){
     if(r&&r.in&&!r.out){cls='working';st='<span class="dot g"></span><span class="st grn">근무중</span>';tm=`출근 ${r.in}`;}
     else if(r&&r.in&&r.out){cls='done';st='<span class="dot p"></span><span class="st pur">퇴근 완료</span>';tm=`출근 ${r.in} · 퇴근 ${r.out}`;}
     // 출퇴근 화면에는 고용형태 대신 담당 업무만 표시 (고용형태는 직원관리에서만)
-    const duty=e.duty?`<div style="margin-top:5px;"><span class="badge b-duty">${e.duty}</span></div>`:'';
+    const duty=e.duty?`<div style="margin-top:5px;"><span class="badge b-duty">${esc(e.duty)}</span></div>`:'';
     const mine=!staffMode||e.id===cc.myEmpId;
     const meBadge=(staffMode&&e.id===cc.myEmpId)?' <span class="badge b-admin">나</span>':'';
     g.insertAdjacentHTML('beforeend',`<div class="emp-card ${cls}${mine?'':' noclick'}" ${mine?`onclick="openPunch('${e.id}')"`:''}>
-      <div class="nm">${e.name}${meBadge}</div>${duty}
+      <div class="nm">${esc(e.name)}${meBadge}</div>${duty}
       <div style="margin-top:8px;">${st}</div><div class="tm">${tm}&nbsp;</div></div>`);
   });
   renderLunchBar(); renderPushUI();
@@ -956,6 +958,13 @@ function fmtHM(min){ const h=Math.floor(min/60),m=min%60; return h?(m?`${h}시�
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
 function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
+/* 클라우드에서 온 '열쇠(id)'는 기계가 만든 모양만 통과시킨다.
+   방에 쓸 수 있는 사람이 id 를 "e1'); 코드 ; ('" 처럼 만들면
+   onclick="openRec('<id>',…)" 자리에서 관리자 기기에서 그 코드가 돈다.
+   id 는 앱이 만드는 값이므로(e숫자 / l숫자영문) 엄격히 제한해도 멀쩡하다. */
+const ID_OK=/^[A-Za-z0-9_-]{1,40}$/;
+function safeId(s){ return typeof s==='string'&&ID_OK.test(s); }
+function safeDate(s){ return typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s); }
 function esc(s){ // 클라우드에서 온 글자(사유·이름 등)를 화면에 넣을 때 반드시 거친다
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -1543,9 +1552,9 @@ function renderLunchBar(){
   if(ov&&ov.hold&&mgr){
     head=(ov.n||0)===0
       ?`✋ <b style="color:#D95B23;">주문 안 함</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} (직접 주문 예약)</span>`
-      :`✋ <b style="color:#D95B23;">직접 주문 ${ov.n}개</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 발송예정</span>`;
+      :`✋ <b style="color:#D95B23;">직접 주문 ${esc(ov.n)}개</b><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 발송예정</span>`;
   }else if(ov&&ov.hold){ // 직원에게는 직접 주문 여부를 숨기고 개수만
-    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${ov.n||0}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 주문예정</span>`;
+    head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${esc(ov.n||0)}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} 주문예정</span>`;
   }else{
     const n=(tds===todayStr())?lunchCount():0;
     head=`🍱 도시락 <span style="color:var(--purple);font-size:17px;">${n}개</span><br><span class="muted" style="font-weight:400;font-size:12px;">${dateTxt} ${mgr?'자동주문예정':'주문예정'}</span>`;
@@ -1595,7 +1604,7 @@ function renderStatus(){
     visEmps(ds).forEach(e=>{
       const r=recOf(ds,e.id), st=dayStatus(e,new Date(stDate));
       const wm=workedMin(e,r);
-      h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${r&&r.in?r.in:'-'}</td><td>${r&&r.out?r.out:'-'}${r&&r.otOut?`<br><span class="tag man">🌙 ${r.otOut}</span>`:''}</td>
+      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td>${esc(r&&r.in?r.in:'-')}</td><td>${r&&r.out?r.out:'-'}${r&&r.otOut?`<br><span class="tag man">🌙 ${r.otOut}</span>`:''}</td>
         <td>${wm?Math.floor(wm/60)+'h '+(wm%60)+'m':'-'}</td>
         <td><span class="tag ${st.t}">${st.l}</span>${r&&r.auto?' <span class="tag man">자동</span>':''}${r&&r.manual?' <span class="tag man">수정</span>':''}</td>
         <td>${canManage()?`<button class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:8px;" onclick="openRec('${e.id}','${ds}')">수정</button>`:''}</td></tr>`;
@@ -1611,7 +1620,7 @@ function renderStatus(){
     for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);h+=`<th>${DAYNM[d.getDay()]}<br><span style="font-weight:400;">${d.getDate()}</span></th>`;}
     h+='</tr>';
     visEmps().forEach(e=>{
-      h+=`<tr><td style="font-weight:700;">${e.name}</td>`;
+      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td>`;
       for(let i=0;i<7;i++){
         const d=new Date(mon);d.setDate(mon.getDate()+i);
         const r=recOf(fmtD(d),e.id), st=dayStatus(e,d);
@@ -1628,7 +1637,7 @@ function renderStatus(){
     let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>연차</th><th>총근로</th></tr>';
     visEmps().forEach(e=>{
       const a=monthAgg(e,y,m);
-      h+=`<tr><td style="font-weight:700;">${e.name}</td><td>${a.attend}일</td>
+      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td>${a.attend}일</td>
         <td>${a.lateCnt?`<span class="tag late">${a.lateCnt}</span>`:'-'}</td>
         <td>${a.earlyCnt?`<span class="tag early">${a.earlyCnt}</span>`:'-'}</td>
         <td>${a.absent?`<span class="tag abs">${a.absent}</span>`:'-'}</td>
@@ -1746,11 +1755,11 @@ function renderEmpList(){
     const months=Math.max(0,Math.floor((new Date(e.leaveDate||todayStr())-new Date(e.joinDate))/(30.44*864e5)));
     const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
     const admin=e.main?' <span class="badge b-admin">메인관리자</span>':e.role==='admin'?' <span class="badge b-admin">관리자</span>':e.role==='subadmin'?' <span class="badge b-admin">부관리자</span>':'';
-    const duty=e.duty?` <span class="badge b-duty">${e.duty}</span>`:'';
+    const duty=e.duty?` <span class="badge b-duty">${esc(e.duty)}</span>`:'';
     const off=e.leaveDate?' <span class="badge b-off">퇴사</span>':'';
     const payS=!canPriv()?'':e.type==='daily'?` · 시급 ${comma(e.hourly)}원`:` · 월 ${comma(e.salary)}원`;
     return `<div class="emp-row" onclick="openEmpForm('${e.id}')"><div>
-      <div class="nm">${e.name} ${badge}${admin}${duty}${off}</div>
+      <div class="nm">${esc(e.name)} ${badge}${admin}${duty}${off}</div>
       <div class="info">근무기간 : ${e.joinDate} ~ ${e.leaveDate||'계속'} (${months}개월)${payS}</div>
     </div><div class="arrow">›</div></div>`;
   };
@@ -1920,7 +1929,7 @@ function renderPay(){
   h+='<h3 class="sub">■ 정직원 — 월급제 (결근·조퇴 공제)</h3><div class="card" style="padding:10px;"><div class="tbl-wrap"><table><tr><th>직원명</th><th>월급여</th><th>통상시급</th><th>결근</th><th>조퇴</th><th>결근주</th><th>공제액</th><th>실수령</th></tr>';
   regs.forEach(e=>{
     const c=calcRegular(e,y,m); sumNet+=c.net; sumSal+=e.salary;
-    h+=`<tr><td style="font-weight:700;">${e.name}</td><td class="num">${comma(e.salary)}</td><td class="num">${comma(c.wage)}</td>
+    h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td class="num">${comma(e.salary)}</td><td class="num">${comma(c.wage)}</td>
       <td><input style="width:44px;padding:4px;text-align:center;" value="${c.absent}" onchange="setOv('${ym}','${e.id}','absent',+this.value||0);renderPay();"></td>
       <td><input style="width:44px;padding:4px;text-align:center;" value="${c.early}" onchange="setOv('${ym}','${e.id}','early',+this.value||0);renderPay();"></td>
       <td><input style="width:44px;padding:4px;text-align:center;" title="결근이 있던 주의 수 — 주휴수당 공제 기준. 월 경계에 걸친 주는 목요일이 있는 달에서 한 번만 셉니다." value="${c.absentW}" onchange="setOv('${ym}','${e.id}','absentW',+this.value||0);renderPay();"></td>
@@ -1933,7 +1942,7 @@ function renderPay(){
   h+='<h3 class="sub">■ 3.3% 사업소득자 — 용역비</h3><div class="card" style="padding:10px;"><div class="tbl-wrap"><table><tr><th>직원명</th><th>월 용역비</th><th>3%</th><th>0.3%</th><th>실지급액</th></tr>';
   frees.forEach(e=>{
     const c=calcFree(e,y,m); sumFee+=c.fee; sumFnet+=c.net;
-    h+=`<tr><td style="font-weight:700;">${e.name}</td>
+    h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td>
       <td><input style="width:92px;padding:4px;text-align:right;" value="${comma(c.fee)}" onchange="setOv('${ym}','${e.id}','fee',unc(this.value));renderPay();"></td>
       <td class="num">${comma(c.t3)}</td><td class="num">${comma(c.t03)}</td>
       <td class="num" style="font-weight:800;color:var(--purple);">${comma(c.net)}</td></tr>`;
@@ -1947,7 +1956,7 @@ function renderPay(){
     h+='<div class="tbl-wrap"><table><tr><th>직원명</th><th>시급</th><th>출근일</th><th>총근로</th><th>기본급여</th><th>주휴주</th><th>주휴수당</th><th>총급여</th></tr>';
     dailys.forEach(e=>{
       const c=calcDaily(e,y,m); sumD+=c.total;
-      h+=`<tr><td style="font-weight:700;">${e.name}</td><td class="num">${comma(e.hourly)}</td><td>${c.attend}일</td><td>${c.hours.toFixed(1)}h</td>
+      h+=`<tr><td style="font-weight:700;">${esc(e.name)}</td><td class="num">${comma(e.hourly)}</td><td>${c.attend}일</td><td>${c.hours.toFixed(1)}h</td>
         <td class="num">${comma(c.base)}</td><td>${c.jhW}주</td><td class="num">${comma(c.jh)}</td>
         <td class="num" style="font-weight:800;color:var(--purple);">${comma(c.total)}</td></tr>`;
     });
@@ -2040,7 +2049,7 @@ function setGrant(empId,v){
 function openLeaveForm(){
   if(!canManage()){toast('관리자 기기에서만 등록할 수 있습니다');return;}
   const sel=document.getElementById('lvEmp');
-  sel.innerHTML=activeEmps().map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  sel.innerHTML=activeEmps().map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('');
   document.getElementById('lvFrom').value=todayStr(); document.getElementById('lvTo').value='';
   document.getElementById('lvType').value='full'; document.getElementById('lvMemo').value='';
   openM('mdLeave');
@@ -2155,7 +2164,11 @@ async function flushLeaves(){
 function leavePut(path,val){ if(cloudOn())cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)}).catch(()=>{}); }
 // 클라우드 병합: 클라우드 우선, 이 기기에만 있는 항목·삭제 표식은 올림
 function leaveMergeCloud(cl){
-  const L=leavesDB(), ci=(cl&&cl.items)||{}, cg=(cl&&cl.grants)||{}, upI={}, upG={};
+  const L=leavesDB(), cg=(cl&&cl.grants)||{}, upI={}, upG={};
+  // id·직원id·날짜가 기계가 만든 모양이 아닌 항목은 받지 않는다 (onclick 자리를 노린 공격 차단)
+  const ci={}; Object.entries((cl&&cl.items)||{}).forEach(([id,x])=>{
+    if(safeId(id)&&x&&safeId(x.e)&&safeDate(x.d))ci[id]=x;
+  });
   /* 예전에는 클라우드가 항상 이겼다. 그래서
        · 관리자가 승인을 누르면 25초 뒤 '승인 대기'로 되돌아가고 서버도 대기로 덮였다
        · 반대로 오프라인에 있던 옛 변경이 다른 관리자의 최신 변경을 지웠다
@@ -2228,7 +2241,7 @@ function renderSettle(y,m){
       <div class="muted" style="font-size:12.5px;margin-bottom:8px;">직원이 올린 신고·신청입니다. 정산 전에 인정하거나 반려해 주세요.</div>`;
     rows.filter(r=>r.wait).forEach(r=>{
       h+=`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
-        <b>${r.e.name}</b><span style="color:#D95B23;font-weight:700;">${r.wait}건</span></div>`;
+        <b>${esc(r.e.name)}</b><span style="color:#D95B23;font-weight:700;">${r.wait}건</span></div>`;
     });
     h+=`<div class="muted" style="margin-top:8px;font-size:12px;">연차 신청은 [🌴 연차] 탭에서, 지각·야근은 아래 기록을 눌러 확인합니다.</div></div>`;
   }
@@ -2236,7 +2249,7 @@ function renderSettle(y,m){
   h+=`<div class="card" style="padding:10px;"><div style="font-weight:800;margin:2px 0 6px 4px;">직원별 정산표</div><div class="tbl-wrap"><table>
     <tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>연차<br>사용</th><th>연차<br>잔여</th><th>야근</th><th>확인<br>대기</th></tr>`;
   rows.forEach(r=>{
-    h+=`<tr><td style="font-weight:700;">${r.e.name}</td>
+    h+=`<tr><td style="font-weight:700;">${esc(r.e.name)}</td>
       <td class="num">${r.attend}</td>
       <td class="num">${r.lateCnt||'-'}</td>
       <td class="num">${r.earlyCnt||'-'}</td>
@@ -2250,7 +2263,7 @@ function renderSettle(y,m){
   const far=rows.filter(r=>r.farCnt);
   if(far.length){
     h+=`<div class="muted" style="margin-top:8px;font-size:12px;">📍 회사 밖에서 찍은 기록: `
-      +far.map(r=>`${r.e.name} ${r.farCnt}건`).join(' · ')+` — 현황에서 확인하세요.</div>`;
+      +far.map(r=>`${esc(r.e.name)} ${r.farCnt}건`).join(' · ')+` — 현황에서 확인하세요.</div>`;
   }
   h+=`<div class="muted" style="margin-top:6px;font-size:12px;">연차 잔여는 ${y}년 기준입니다. 급여 계산은 아래 표를 보세요(야근은 급여에 자동 반영되지 않습니다).</div></div>`;
   return h;
@@ -2275,13 +2288,13 @@ function renderOtBoard(y,m){
     <div class="sub">${tot?`${list.length}명 · ${logs.length}회 · 1인 평균 ${fmtHM(Math.round(tot/list.length))}`:'이번 달은 정시 퇴근! 👏'}</div></div>`;
   if(list.length){
     h+='<div class="card"><div style="font-weight:800;margin-bottom:2px;">직원별 야근 시간</div>';
-    list.forEach(p=>{ h+=`<div class="ot-emp"><div class="nm">${p.e.name}</div><div class="barw"><div class="bar"><i style="width:${Math.max(6,Math.round(p.min/mx*100))}%;"></i></div>
+    list.forEach(p=>{ h+=`<div class="ot-emp"><div class="nm">${esc(p.e.name)}</div><div class="barw"><div class="bar"><i style="width:${Math.max(6,Math.round(p.min/mx*100))}%;"></i></div>
       <div class="cnt">${p.cnt}회 · 마지막 ${p.last.slice(5).replace('-','.')}</div></div><div class="hrs">${fmtHM(p.min)}</div></div>`; });
     h+='</div><div class="card"><div style="font-weight:800;margin-bottom:2px;">야근 기록</div>';
     logs.sort((a,b)=>a.ds<b.ds?1:a.ds>b.ds?-1:b.min-a.min).forEach(l=>{
-      h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}><div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${l.e.name}
+      h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}><div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${esc(l.e.name)}
         <span class="muted">${l.hol?'휴일근무':'퇴근'} ${l.out||''}</span>${l.wait?' <span class="tag man">⏳ 확인 대기</span>':''}
-        ${l.memo?`<div class="muted" style="font-size:11.5px;">${l.memo}</div>`:''}</div><div class="plus">+${fmtHM(l.min)}</div></div>`;
+        ${l.memo?`<div class="muted" style="font-size:11.5px;">${esc(l.memo)}</div>`:''}</div><div class="plus">+${fmtHM(l.min)}</div></div>`;
     });
     h+='</div>';
   }
@@ -2427,10 +2440,14 @@ function lockAdmin(){
 function effPinH(){ return DB.settings.pinH||pinHash(DB.settings.pin); } // 클라우드 동기화된 비번 해시 우선
 function changePin(){
   if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
-  const v=document.getElementById('setPin').value;
-  if(!/^\d{4}$/.test(v)){toast('4자리 숫자로 입력해 주세요');return;}
+  const v=document.getElementById('setPin').value.trim();
+  // 4자리 숫자 고정은 너무 약하다. 비밀번호 해시가 클라우드(공개 구간)에 올라가므로
+  // 숫자 4자리는 1만 번만 맞춰 보면 뚫린다. 4~16자 숫자·영문으로 풀었다.
+  if(!/^[A-Za-z0-9]{4,16}$/.test(v)){toast('4~16자 숫자 또는 영문으로 입력해 주세요');return;}
+  if(/^\d{4}$/.test(v)&&!confirm('숫자 4자리는 쉽게 추측됩니다.\n그래도 이 비밀번호로 하시겠습니까?\n(영문을 섞어 6자 이상을 권합니다)'))return;
   DB.settings.pin=v; DB.settings.pinH=pinHash(v); save(); document.getElementById('setPin').value='';
   if(cloudOn())cfetch('/pinH',{method:'PUT',body:JSON.stringify(DB.settings.pinH)}).catch(()=>{}); // 모든 기기에 즉시 적용
+  renderPinWeak();
   toast('비밀번호가 변경되었습니다 (모든 기기에 적용)');
 }
 function makeMoveLink(){
@@ -2709,7 +2726,13 @@ async function cloudSync(){
     await flushLeaves();          // 밀린 연차 신청·승인도 함께 재전송
     const room=await cfetch('')||{};
     { // 기록 병합: 클라우드 우선, 이 기기에만 있는 기록은 보존 후 클라우드로 올림 (기기 간 통일)
-      const cr=room.recs||{}, up={}; let localOnly=0;
+      // 날짜·직원id 모양이 아닌 기록은 받지 않는다 (onclick="openRec('<id>','<날짜>')" 자리 보호)
+      const cr={}; Object.entries(room.recs||{}).forEach(([d,em])=>{
+        if(!safeDate(d)||!em||typeof em!=='object')return;
+        const row={}; Object.entries(em).forEach(([id,r])=>{ if(safeId(id))row[id]=r; });
+        cr[d]=row;
+      });
+      const up={}; let localOnly=0;
       const pq=new Set((DB.pending||[]).map(x=>x.d+'|'+x.e));
       Object.entries(DB.records||{}).forEach(([d,em])=>Object.entries(em||{}).forEach(([id,r])=>{
         if(!(cr[d]&&cr[d][id]!==undefined)){ (cr[d]=cr[d]||{})[id]=r; (up[d]=up[d]||{})[id]=r; localOnly++; }
@@ -2724,7 +2747,9 @@ async function cloudSync(){
     leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
-      DB.employees=Object.entries(room.emps).map(([id,e])=>{
+      const badIds=Object.keys(room.emps).filter(id=>!safeId(id));
+      if(badIds.length)console.warn('이상한 직원 id 무시',badIds);   // 화면·onclick 에 넣지 않는다
+      DB.employees=Object.entries(room.emps).filter(([id])=>safeId(id)).map(([id,e])=>{
         const l=local[id]||{};
         return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||''),duty:(e.duty||l.duty||'')}; // 전화번호·담당업무는 비어있지 않은 값 우선 (지워짐 방지)
@@ -2776,7 +2801,7 @@ async function cloudSync(){
       if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
       if(document.getElementById('pg-leave').classList.contains('on'))renderLeave();
     }
-    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();}
+    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
   syncBusy=false;
 }
@@ -2958,7 +2983,7 @@ function openLvReq(){
   }
   const e=emp(window._lqEmp), Y=new Date().getFullYear();
   document.getElementById('lqSub').innerHTML=
-    `${e.name}님 · ${Y}년 남은 연차 <b>${(leaveGrant(e,Y)-leaveUsed(e,Y)).toFixed(1).replace('.0','')}일</b>`;
+    `${esc(e.name)}님 · ${Y}년 남은 연차 <b>${(leaveGrant(e,Y)-leaveUsed(e,Y)).toFixed(1).replace('.0','')}일</b>`;
   document.getElementById('lqType').value='full';
   document.getElementById('lqFrom').value=todayStr();
   document.getElementById('lqTo').value='';
@@ -3102,7 +3127,7 @@ function otRptOpen(empId,ds){
   if(!r||!r.in){ toast('출근 기록이 있어야 야근을 입력할 수 있습니다'); return; }
   window._otEmp=empId; window._otDs=ds;
   document.getElementById('otrSub').innerHTML=
-    `${e.name}님 · ${ds}<br>근무 종료는 <b>${e.schedule.end}</b> 입니다. 그 이후 일한 시간이 야근입니다.`;
+    `${esc(e.name)}님 · ${esc(ds)}<br>근무 종료는 <b>${esc(e.schedule.end)}</b> 입니다. 그 이후 일한 시간이 야근입니다.`;
   document.getElementById('otrEnd').value=r.otE||r.otOut||'';
   document.getElementById('otrMemo').value=r.otMemo||'';
   document.getElementById('btnOtRptDel').style.display=r.otE?'block':'none';
@@ -3161,7 +3186,7 @@ function lateRptOpen(empId,ds,punched){
   const e=emp(empId); if(!e)return;
   window._lrEmp=empId; window._lrDs=ds;
   document.getElementById('lrSub').innerHTML=
-    `${e.name}님 · ${ds}<br>찍은 시각 <b>${punched}</b> — 근무 시작은 ${e.schedule.start} 입니다.`;
+    `${esc(e.name)}님 · ${esc(ds)}<br>찍은 시각 <b>${esc(punched)}</b> — 근무 시작은 ${esc(e.schedule.start)} 입니다.`;
   document.getElementById('lrTime').value=e.schedule.start;
   document.getElementById('lrMemo').value='';
   openM('mdLateRpt');
@@ -3368,7 +3393,7 @@ function renderPushUI(){
   const card=document.getElementById('pushCard');
   if(card){
     card.innerHTML=on
-      ?`<div style="font-weight:700;font-size:13px;color:#1E7F4F;">📲 폰 알림 켜짐 ✓ <span class="muted" style="font-weight:400;">(${who.name})</span></div>
+      ?`<div style="font-weight:700;font-size:13px;color:#1E7F4F;">📲 폰 알림 켜짐 ✓ <span class="muted" style="font-weight:400;">(${esc(who.name)})</span></div>
         <button class="btn ghost wide" style="margin-top:6px;" onclick="pushDisable()">폰 알림 끄기</button>`
       :`<button class="btn p wide" onclick="pushEnable()">📲 폰 알림 켜기 (앱 설치 불필요)</button>`;
   }
@@ -3395,7 +3420,7 @@ function renderNotifyCard(){
     <input type="checkbox" data-nid="_admin" ${rec._admin!==false?'checked':''} style="width:18px;height:18px;"> 대표님 (이 관리자 기기)</label>`;
   DB.employees.filter(e=>!e.leaveDate).forEach(e=>{
     h+=`<label style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px;">
-      <input type="checkbox" data-nid="${e.id}" ${rec[e.id]?'checked':''} style="width:18px;height:18px;"> ${e.name}</label>`;
+      <input type="checkbox" data-nid="${esc(e.id)}" ${rec[e.id]?'checked':''} style="width:18px;height:18px;"> ${esc(e.name)}</label>`;
   });
   list.innerHTML=h;
   const info=document.getElementById('ntfyInfo');
@@ -3513,6 +3538,31 @@ function joinFromHash(){
   if(!m){ if(!/#admin=/.test(location.hash))hideSplash(); return; }
   setTimeout(()=>{ try{ joinCore(m); }finally{ hideSplash(); try{renderKiosk();renderCloudStatus();}catch(e){} } },150);
 }
+/* 승격(관리자·부관리자) 관문 — 관리자 비밀번호를 입력해야 통과한다.
+   예전에는 링크만 만들면 통과였다. 링크 내용은 base64 JSON 이라 직원 누구나 만들 수 있다. */
+function promoteGate(nm){
+  const want=effPinH();
+  if(!want)return true;                      // 비밀번호가 설정 전인 초기 상태
+  for(let t=0;t<3;t++){
+    const v=prompt((nm?nm+'님 — ':'')+'관리자 권한을 받으려면 관리자 비밀번호를 입력하세요'
+      +(t?' ('+(3-t)+'회 남음)':''));
+    if(v===null)return false;
+    if(pinHash(v.trim())===want)return true;
+  }
+  alert('비밀번호가 맞지 않습니다. 관리자에게 문의해 주세요.');
+  return false;
+}
+function phoneGate(p){
+  if(!p.v)return true;
+  for(let t=0;t<3;t++){
+    const num=prompt((p.n||'직원')+'님 본인 확인 — 휴대폰 번호를 입력하세요 (숫자만)');
+    if(num===null)return false;
+    if(pinHash(num.replace(/\D/g,''))===p.v)return true;
+    alert('번호가 일치하지 않습니다. 다시 입력해 주세요. ('+(2-t)+'회 남음)');
+  }
+  alert('본인 확인에 실패했습니다. 관리자에게 문의해 주세요.');
+  return false;
+}
 function joinCore(m){
   try{
     const p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
@@ -3520,25 +3570,24 @@ function joinCore(m){
     const c=cloudCfg();
     // 이미 부관리자로 쓰던 기기가 관리자 링크를 열면 관리자로 승격 (암호키 흡수)
     if(c&&c.role==='admin'&&c.owner===false&&c.roomId===p.r&&c.myEmpId===p.i&&p.adm&&p.k&&!c.key){
+      if(!promoteGate(p.n)){ history.replaceState(null,'',location.pathname); return; }
       c.key=p.k; save(); history.replaceState(null,'',location.pathname);
       setTimeout(()=>toast('관리자로 승격되었습니다! 이제 급여까지 함께 관리합니다'),400); return;
     }
     if(c&&c.role==='admin'){ history.replaceState(null,'',location.pathname); toast('관리자 기기에서는 초대 링크가 적용되지 않습니다'); return; }
     if(c&&c.role==='staff'&&c.roomId===p.r&&c.myEmpId===p.i){
-      // 이미 입장한 기기(홈 화면 앱). 관리자/부관리자 링크면 승격
-      if(p.adm){ DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k||null,myEmpId:p.i}; save(); setTimeout(()=>toast(p.k?'관리자로 전환되었습니다! 급여까지 함께 관리합니다':'부관리자로 전환되었습니다! (급여·개인정보 제외)'),400); }
+      // 이미 입장한 기기(홈 화면 앱). 관리자/부관리자 링크면 승격.
+      // 예전에는 여기서 본인확인·비밀번호 없이 바로 승격됐다(본인확인 분기보다 앞이었다).
+      if(p.adm){
+        if(!phoneGate(p))return;
+        if(!promoteGate(p.n))return;
+        DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k||null,myEmpId:p.i}; save();
+        setTimeout(()=>toast(p.k?'관리자로 전환되었습니다! 급여까지 함께 관리합니다':'부관리자로 전환되었습니다! (급여·개인정보 제외)'),400);
+      }
       return;
     }
-    if(p.v){
-      let ok=false;
-      for(let t=0;t<3;t++){
-        const num=prompt((p.n||'직원')+'님 본인 확인 — 휴대폰 번호를 입력하세요 (숫자만)');
-        if(num===null)return;
-        if(pinHash(num.replace(/\D/g,''))===p.v){ok=true;break;}
-        alert('번호가 일치하지 않습니다. 다시 입력해 주세요. ('+(2-t)+'회 남음)');
-      }
-      if(!ok){alert('본인 확인에 실패했습니다. 관리자에게 문의해 주세요.');return;}
-    }
+    if(!phoneGate(p))return;
+    if(p.adm&&!promoteGate(p.n))return;          // 승격에는 관리자 비밀번호가 필요하다
     if(p.adm){ // 관리자(키 있음: 급여까지 공유) / 부관리자(키 없음: 급여·개인정보 제외)
       DB.settings.cloud={url:p.u,roomId:p.r,role:'admin',owner:false,key:p.k||null,myEmpId:p.i};
       save();
@@ -3596,6 +3645,16 @@ async function autoBackup(now){
   };
   if(now)await run(); else backupTimer=setTimeout(run,1500);
 }
+const PIN_BAD=['1234','0000','1111','1212','7777','2580','1004','0123','9999','4321'];
+function renderPinWeak(){
+  const el=document.getElementById('pinWeak'); if(!el)return;
+  const p=DB.settings.pin||'';
+  let msg='';
+  if(!p) msg='';
+  else if(PIN_BAD.includes(p)) msg='⚠️ 지금 비밀번호는 흔히 쓰는 값입니다. 바꿔 주세요 (직원 권한 승격에도 쓰입니다).';
+  else if(/^\d{4}$/.test(p)) msg='⚠️ 숫자 4자리는 추측하기 쉽습니다. 영문을 섞어 6자 이상으로 바꿔 주세요.';
+  el.textContent=msg; el.style.display=msg?'block':'none';
+}
 function renderBackupStatus(){
   const st=document.getElementById('bkStatus'), btn=document.getElementById('btnFolder');
   if(!st)return;
@@ -3612,6 +3671,7 @@ moveFromHash(); adminFromHash(); joinFromHash();
 adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
 applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
 renderFailBar(); // 서버에 저장되지 못한 내용이 있으면 상단에 띠로 알린다
+try{renderPinWeak();}catch(e){}
 // 부관리자·직원 기기는 설정에 못 들어가므로, 첫 터치 때 알림 권한을 대신 요청
 if(!isOwnerDev()&&('Notification' in window)&&Notification.permission==='default'){
   document.addEventListener('click',()=>{ try{Notification.requestPermission();}catch(e){} },{once:true});
