@@ -291,6 +291,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <div class="big" id="sumLine">-</div>
       <div style="font-size:12px;opacity:.7;margin-top:6px;">이름을 누르고 출근 · 퇴근을 기록하세요</div>
     </div>
+    <div id="pushBar"></div>
     <div id="lunchBar"></div>
     <div class="emp-grid" id="kioskGrid"></div>
     <div class="footer-logo"><img id="logoFoot" src="" alt="reflash"></div>
@@ -400,6 +401,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">🔔 출퇴근 알림</h3>
       <div class="muted" style="margin-bottom:10px;">직원이 출근/퇴근을 누르면 선택된 수신자의 기기로 알림이 갑니다. (클라우드 연동 필요)</div>
+      <div id="pushCard" style="margin-bottom:10px;"></div>
       <button class="btn ghost wide" id="btnNotifPerm" onclick="enableBrowserNotif()">🔔 이 기기 브라우저 알림 켜기</button>
       <div id="notifyAdminArea" style="display:none;">
         <div style="border-top:1px solid var(--line);margin:14px 0;"></div>
@@ -582,7 +584,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261101_145824'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_104845'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -647,7 +649,7 @@ function go(p,needAdmin){
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
   if(p==='leave')renderLeave();
-  if(p==='set'){renderNotifyCard();applySetLock();}
+  if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();}
   window.scrollTo(0,0);
 }
 function checkPin(){
@@ -684,7 +686,7 @@ function renderKiosk(){
       <div class="nm">${e.name}${meBadge}</div>${duty}
       <div style="margin-top:8px;">${st}</div><div class="tm">${tm}&nbsp;</div></div>`);
   });
-  renderLunchBar();
+  renderLunchBar(); renderPushUI();
 }
 function openPunch(id){
   const _c=cloudCfg();
@@ -2385,6 +2387,96 @@ function handleEvents(events){
     cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
   }
 }
+/* ================== 폰 알림 (웹푸시) ==================
+   앱이 꺼져 있어도 잠금화면에 알림이 뜬다. 추가 앱 설치 불필요.
+   아이폰은 홈 화면에 추가한 앱에서만 가능(사파리 탭 불가) — iOS 16.4+ */
+const VAPID_PUB='BPqTgemQEMT2f5ZR8POnVerWY0838I56AohAFE-s0t3ljJjZX1cTBdr4f08VrsviCOReTldKJBav8S8krxazEjQ';
+function b64ToU8(s){
+  const pad='='.repeat((4-s.length%4)%4);
+  const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+function pushSupported(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+function isIOS(){ return /iPhone|iPad|iPod/i.test(navigator.userAgent); }
+function isStandalone(){ try{ return window.navigator.standalone===true || matchMedia('(display-mode: standalone)').matches; }catch(e){ return false; } }
+function devId(){
+  DB.settings=DB.settings||{};
+  if(!DB.settings.devId){ DB.settings.devId='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); save(); }
+  return DB.settings.devId;
+}
+function pushWho(){ // 이 기기가 누구 것인지 (직원이면 본인 id, 관리자 기기면 _admin)
+  const c=cloudCfg();
+  if(c&&c.role==='staff'&&c.myEmpId){ const e=emp(c.myEmpId); return {id:c.myEmpId,name:(e&&e.name)||'직원'}; }
+  return {id:'_admin',name:'관리자 기기'};
+}
+function pushOn(){ return !!(DB.settings&&DB.settings.pushSub); }
+async function pushEnable(){
+  if(!pushSupported()){ toast('이 브라우저는 폰 알림을 지원하지 않습니다'); return false; }
+  if(isIOS()&&!isStandalone()){
+    alert('아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있습니다.\n\n1) 사파리 아래 공유 버튼(네모에 화살표)을 누르고\n2) 홈 화면에 추가 를 고른 뒤\n3) 홈 화면의 Ri-work 아이콘으로 다시 열어서 눌러 주세요.');
+    return false;
+  }
+  try{
+    const reg=await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ toast('알림이 거부되었습니다. 설정 → 알림에서 Ri-work를 허용해 주세요'); renderPushUI(); return false; }
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
+    const who=pushWho(), j=sub.toJSON();
+    DB.settings.pushSub=j.endpoint; save();
+    if(cloudOn()){
+      await cfetch('/push/'+devId(),{method:'PUT',body:JSON.stringify({
+        e:who.id, n:who.name, sub:j, ts:Date.now(),
+        ua:(isIOS()?'iPhone':/Android/i.test(navigator.userAgent)?'Android':'PC')})});
+    }
+    renderPushUI(); toast('폰 알림이 켜졌습니다! 📲');
+    return true;
+  }catch(err){ toast('알림 켜기 실패: '+(err&&err.message||err)); return false; }
+}
+async function pushDisable(){
+  try{
+    const reg=await navigator.serviceWorker.getRegistration();
+    const sub=reg&&await reg.pushManager.getSubscription();
+    if(sub)await sub.unsubscribe();
+  }catch(e){}
+  delete DB.settings.pushSub; save();
+  if(cloudOn())cfetch('/push/'+devId(),{method:'DELETE'}).catch(()=>{});
+  renderPushUI(); toast('폰 알림을 껐습니다');
+}
+async function pushRefresh(){ // 앱 열 때마다 구독이 살아 있는지 확인하고 끊겼으면 되살림
+  if(!pushSupported()||!pushOn())return;
+  if(Notification.permission!=='granted'){ delete DB.settings.pushSub; save(); renderPushUI(); return; }
+  try{
+    const reg=await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
+    const j=sub.toJSON(), who=pushWho();
+    if(j.endpoint!==DB.settings.pushSub){ DB.settings.pushSub=j.endpoint; save(); }
+    if(cloudOn())cfetch('/push/'+devId(),{method:'PUT',body:JSON.stringify({
+      e:who.id,n:who.name,sub:j,ts:Date.now(),
+      ua:(isIOS()?'iPhone':/Android/i.test(navigator.userAgent)?'Android':'PC')})}).catch(()=>{});
+  }catch(e){}
+}
+function renderPushUI(){
+  const who=pushWho(), on=pushOn();
+  const bar=document.getElementById('pushBar');
+  if(bar){
+    if(on||!pushSupported()||DB.settings.pushHide){ bar.innerHTML=''; }
+    else bar.innerHTML=`<div class="card" style="background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div style="min-width:0;"><div style="font-weight:800;">🔔 폰 알림을 켜 주세요</div>
+      <div class="muted" style="font-size:12px;margin-top:2px;">퇴근 찍는 걸 깜빡하지 않게 알려 드려요. 앱 설치는 필요 없습니다.</div></div>
+      <button class="btn p" style="padding:9px 13px;white-space:nowrap;flex-shrink:0;" onclick="pushEnable()">켜기</button></div>`;
+  }
+  const card=document.getElementById('pushCard');
+  if(card){
+    card.innerHTML=on
+      ?`<div style="font-weight:700;font-size:13px;color:#1E7F4F;">📲 폰 알림 켜짐 ✓ <span class="muted" style="font-weight:400;">(${who.name})</span></div>
+        <button class="btn ghost wide" style="margin-top:6px;" onclick="pushDisable()">폰 알림 끄기</button>`
+      :`<button class="btn p wide" onclick="pushEnable()">📲 폰 알림 켜기 (앱 설치 불필요)</button>`;
+  }
+}
 function enableBrowserNotif(){
   if(!window.Notification){toast('이 브라우저는 알림을 지원하지 않습니다');return;}
   Notification.requestPermission().then(p=>{
@@ -2627,7 +2719,7 @@ if(!isOwnerDev()&&('Notification' in window)&&Notification.permission==='default
 }
 tick(); renderKiosk(); restoreFolder();
 document.getElementById('setTaxMail').value=DB.settings.taxEmail||'';
-renderCloudStatus(); renderNotifyCard(); cloudSync();
+renderCloudStatus(); renderNotifyCard(); renderPushUI(); pushRefresh(); cloudSync();
 setTimeout(autoPunchTick,3000);
 setInterval(cloudSync,25000);
 window.addEventListener('focus',cloudSync);
