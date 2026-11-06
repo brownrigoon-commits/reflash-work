@@ -673,7 +673,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_175543'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_182730'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -942,6 +942,23 @@ function dayStatus(e,d){ // {tag, label}
   return{t:'ok',l:'정상'};
 }
 // 월 주차 나누기(월요일 시작). return array of [startDate,endDate] within month
+function weekMon(d){ // 그 날이 속한 달력 주의 월요일
+  const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  x.setDate(x.getDate()-((x.getDay()+6)%7));
+  return x;
+}
+function weekOwnsMonth(mon,y,m){ // 이 주(월요일 mon)가 y년 m월 소유인가 — 목요일이 있는 달이 가진다(ISO 8601)
+  const th=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+3);
+  return th.getFullYear()===y&&th.getMonth()===m;
+}
+function isAbsentOn(e,d,today){ // 그날이 결근인가 (근무일·과거·기록없음·확정연차 아님)
+  if(!isWorkday(e,d))return false;
+  const ds=fmtD(d);
+  if(ds>=today)return false;
+  if(leaveOn(ds,e.id))return false;          // 확정된 연차만 면제
+  const r=recOf(ds,e.id);
+  return !(r&&r.in);
+}
 function monthWeeks(y,m){ // m: 0-based
   const first=new Date(y,m,1), last=new Date(y,m+1,0), weeks=[];
   let cur=new Date(first);
@@ -967,10 +984,24 @@ function monthAgg(e,y,m){
       if(r&&r.in){ attend++; totalMin+=workedMin(e,r);
         if(toMin(r.in)>toMin(e.schedule.start)&&!(lv&&lv.t==='am'))lateCnt++;
         if(r.out&&toMin(r.out)<toMin(e.schedule.end)&&!(lv&&lv.t==='pm'))earlyCnt++;
-      } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }   // 확정된 연차만 결근 면제 — 대기 중 신청은 결근으로 두고 정산표에 '확인 대기'로 경고한다
+      } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }   // 결근 '일수'는 날짜가 속한 달에서 센다. 확정된 연차만 면제(대기 신청은 결근 — 정산표에 '확인 대기'로 경고)
     }
   });
-  return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:absWeeks.size,leave};
+  // ── 결근 '주수'는 달력 주 단위로 센다 ──
+  // 월 경계에 걸친 주(예: 9/28~10/4)를 두 달에서 각각 세면 주휴수당이 2배 공제된다.
+  // 그래서 그 주 '목요일이 속한 달'이 한 번만 갖고(ISO 8601), 판정은 7일 전체를 본다.
+  let wCnt=0;
+  {
+    const first=new Date(y,m,1), last=new Date(y,m+1,0);
+    for(let mon=weekMon(first); mon<=last; mon.setDate(mon.getDate()+7)){
+      if(!weekOwnsMonth(mon,y,m))continue;          // 옆 달이 가진 주 — 거기서 센다
+      for(let k=0;k<7;k++){
+        const d=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+k);
+        if(isAbsentOn(e,d,today)){ wCnt++; break; } // 그 주에 결근이 하나라도 있으면 1주
+      }
+    }
+  }
+  return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:wCnt,leave};
 }
 
 function visEmps(d){
@@ -1830,7 +1861,7 @@ function renderPay(){
     h+=`<tr><td style="font-weight:700;">${e.name}</td><td class="num">${comma(e.salary)}</td><td class="num">${comma(c.wage)}</td>
       <td><input style="width:44px;padding:4px;text-align:center;" value="${c.absent}" onchange="setOv('${ym}','${e.id}','absent',+this.value||0);renderPay();"></td>
       <td><input style="width:44px;padding:4px;text-align:center;" value="${c.early}" onchange="setOv('${ym}','${e.id}','early',+this.value||0);renderPay();"></td>
-      <td><input style="width:44px;padding:4px;text-align:center;" value="${c.absentW}" onchange="setOv('${ym}','${e.id}','absentW',+this.value||0);renderPay();"></td>
+      <td><input style="width:44px;padding:4px;text-align:center;" title="결근이 있던 주의 수 — 주휴수당 공제 기준. 월 경계에 걸친 주는 목요일이 있는 달에서 한 번만 셉니다." value="${c.absentW}" onchange="setOv('${ym}','${e.id}','absentW',+this.value||0);renderPay();"></td>
       <td class="num" style="color:var(--red);">${c.total?'-'+comma(c.total):'0'}</td>
       <td class="num" style="font-weight:800;color:var(--purple);">${comma(c.net)}</td></tr>`;
   });
