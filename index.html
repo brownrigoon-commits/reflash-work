@@ -373,6 +373,10 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <div class="muted">설정 변경은 제작자(원본) 기기에서만 가능합니다. 여기서는 열람만 됩니다.<br>출퇴근·현황·직원관리(직원 추가 포함)·급여는 모두 사용할 수 있어요.</div>
     </div>
     <div class="card">
+      <h3 style="font-size:15px;margin-bottom:10px;">🗓️ 공휴일</h3>
+      <div id="holBody"></div>
+    </div>
+    <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">🔐 관리자 비밀번호 변경</h3>
       <input type="password" id="setPin" placeholder="새 비밀번호 (4~16자, 영문 섞어 6자 이상 권장)" maxlength="16" autocomplete="new-password">
       <button class="btn p wide" style="margin-top:10px;" onclick="changePin()">변경하기</button>
@@ -681,7 +685,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_204023'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261106_205352'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -792,7 +796,7 @@ function go(p,needAdmin){
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
   if(p==='leave')renderLeave();
-  if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();renderGeoCard();}
+  if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();renderGeoCard();renderHolCard();renderPinWeak();}
   window.scrollTo(0,0);
 }
 function checkPin(){
@@ -926,6 +930,7 @@ function undoPunch(){ // 잘못 누른 출퇴근 되돌리기 (오늘 기록, �
 /* ================== 근태 판정 ================== */
 function isWorkday(e,d){ // Date obj
   const ds=fmtD(d);
+  if(isHoliday(ds))return false;      // 공휴일은 소정근로일이 아니다 (결근 아님, 주휴 개근도 깨지지 않음)
   if(ds<e.joinDate)return false;
   if(e.leaveDate&&ds>e.leaveDate)return false;
   return e.schedule.days.includes(d.getDay());
@@ -971,6 +976,86 @@ function otPendMin(e,r){ // 아직 확인하지 않은(미반영) 야근 시간
   return Math.max(0,toMin(r.otE)-toMin(e.schedule.end));
 }
 function fmtHM(min){ const h=Math.floor(min/60),m=min%60; return h?(m?`${h}시간 ${m}분`:`${h}시간`):`${m}분`; }
+/* ================== 공휴일 ==================
+   예전에는 근무 요일만 봐서 추석·한글날이 전원 결근으로 잡혔다.
+   결근 1일 = 근로분(시급×8h) + 그 주 주휴(시급×8h) 라서 하루가 이틀분으로 깎였다.
+   2026-10 실측 -809,568원.
+   표에 없는 연도는 화면에 경고를 띄운다 — 조용히 틀리는 것이 가장 나쁘다.
+   임시공휴일·창립기념일은 설정 탭에서 더하거나 뺄 수 있고, 그 내용은 클라우드(/holidays)에
+   올라가 급여대장 스크립트도 같은 표를 쓴다. */
+const HOLIDAYS={
+ // 2025
+ '2025-01-01':'신정','2025-01-27':'임시공휴일','2025-01-28':'설날 연휴','2025-01-29':'설날',
+ '2025-01-30':'설날 연휴','2025-03-01':'삼일절','2025-03-03':'대체공휴일(삼일절)',
+ '2025-05-01':'근로자의 날','2025-05-05':'어린이날·부처님오신날','2025-05-06':'대체공휴일',
+ '2025-06-03':'대통령선거','2025-06-06':'현충일','2025-08-15':'광복절','2025-10-03':'개천절',
+ '2025-10-05':'추석 연휴','2025-10-06':'추석','2025-10-07':'추석 연휴','2025-10-08':'대체공휴일(추석)',
+ '2025-10-09':'한글날','2025-12-25':'성탄절',
+ // 2026
+ '2026-01-01':'신정','2026-02-16':'설날 연휴','2026-02-17':'설날','2026-02-18':'설날 연휴',
+ '2026-03-01':'삼일절','2026-03-02':'대체공휴일(삼일절)','2026-05-01':'근로자의 날',
+ '2026-05-05':'어린이날','2026-05-24':'부처님오신날','2026-05-25':'대체공휴일(부처님오신날)',
+ '2026-06-03':'지방선거','2026-06-06':'현충일','2026-07-17':'제헌절','2026-08-15':'광복절',
+ '2026-08-17':'대체공휴일(광복절)','2026-09-24':'추석 연휴','2026-09-25':'추석',
+ '2026-09-26':'추석 연휴','2026-10-03':'개천절','2026-10-05':'대체공휴일(개천절)',
+ '2026-10-09':'한글날','2026-12-25':'성탄절',
+ // 2027
+ '2027-01-01':'신정','2027-02-06':'설날 연휴','2027-02-07':'설날','2027-02-08':'설날 연휴',
+ '2027-02-09':'대체공휴일(설날)','2027-03-01':'삼일절','2027-05-01':'근로자의 날',
+ '2027-05-05':'어린이날','2027-05-13':'부처님오신날','2027-06-06':'현충일',
+ '2027-06-07':'대체공휴일(현충일)','2027-07-17':'제헌절','2027-08-15':'광복절',
+ '2027-08-16':'대체공휴일(광복절)','2027-09-14':'추석 연휴','2027-09-15':'추석',
+ '2027-09-16':'추석 연휴','2027-10-03':'개천절','2027-10-04':'대체공휴일(개천절)',
+ '2027-10-09':'한글날','2027-10-11':'대체공휴일(한글날)','2027-12-25':'성탄절'
+};
+const HOL_YEARS=['2025','2026','2027'];      // 표가 있는 연도
+function holPush(){ if(cloudOn())cfetch('/holidays',{method:'PUT',body:JSON.stringify(holCfg())})
+  .catch(e=>failNote('공휴일','','',String(e.message||''))); }
+function holAdd(){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
+  const d=document.getElementById('holDate').value, n=document.getElementById('holName').value.trim();
+  if(!d){toast('날짜를 골라 주세요');return;}
+  const c=holCfg();
+  if(n){ c.add[d]=n.slice(0,30); delete c.off[d]; toast(`${d} ${n} 추가했습니다`); }
+  else { if(!HOLIDAYS[d]&&!c.add[d]){toast('이름을 적어 주세요 (공휴일로 추가합니다)');return;}
+         delete c.add[d]; c.off[d]=true; toast(`${d}을 근무일로 바꿨습니다`); }
+  save(); holPush(); renderHolCard(); recRerender();
+  document.getElementById('holName').value='';
+}
+function holDel(ds){
+  if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
+  const c=holCfg(); delete c.add[ds]; delete c.off[ds];
+  save(); holPush(); renderHolCard(); recRerender(); toast('되돌렸습니다');
+}
+function renderHolCard(){
+  const box=document.getElementById('holBody'); if(!box)return;
+  const c=holCfg(), y=String(new Date().getFullYear());
+  const mine=[...Object.entries(c.add).map(([d,n])=>({d,n,t:'add'})),
+              ...Object.keys(c.off).map(d=>({d,n:HOLIDAYS[d]||'',t:'off'}))].sort((a,b)=>a.d<b.d?-1:1);
+  let s=`<div class="muted" style="margin-bottom:8px;">${holYearKnown(y)?`${y}년 공휴일은 앱에 들어 있습니다 (설날·추석·대체공휴일 포함).`
+    :`<b style="color:#A32020;">⚠️ ${y}년 공휴일 표가 없습니다. 아래에서 직접 넣어 주세요 — 넣지 않으면 공휴일이 결근으로 잡힙니다.</b>`}
+    공휴일에는 결근·주휴 공제가 없고, 미출근 알림도 가지 않습니다.</div>`;
+  if(mine.length){
+    s+='<div style="margin-bottom:8px;">';
+    mine.forEach(x=>{ s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;">
+      <div><b>${esc(x.d)}</b> ${x.t==='add'?`<span class="tag hol">${esc(x.n)}</span>`:`<span class="tag abs">근무일로 변경</span>`}</div>
+      <button class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:8px;" onclick="holDel('${esc(x.d)}')">되돌리기</button></div>`; });
+    s+='</div>';
+  }
+  s+=`<div class="row"><input type="date" id="holDate" style="flex:1;"><input id="holName" placeholder="이름 (비우면 근무일로)" style="flex:1;"></div>
+    <button class="btn p wide" style="margin-top:8px;" onclick="holAdd()">추가 / 제외</button>
+    <div class="muted" style="margin-top:8px;font-size:12px;">임시공휴일·창립기념일은 이름을 적어 추가하세요.
+    반대로 공휴일에 정상 근무한다면 이름을 비우고 추가하면 그날은 근무일이 됩니다.</div>`;
+  box.innerHTML=s;
+}
+function holCfg(){ DB.holidays=DB.holidays||{}; DB.holidays.add=DB.holidays.add||{}; DB.holidays.off=DB.holidays.off||{}; return DB.holidays; }
+function holName(ds){               // 공휴일이면 이름, 아니면 ''
+  const c=holCfg();
+  if(c.off[ds])return '';           // 대표님이 "이 날은 일한다"고 뺀 날
+  return c.add[ds]||HOLIDAYS[ds]||'';
+}
+function isHoliday(ds){ return !!holName(ds); }
+function holYearKnown(y){ return HOL_YEARS.includes(String(y)); }
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
 function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
@@ -1077,7 +1162,11 @@ function leaveWaiting(empId){ // 승인 대기 목록
 function leaveDays(x){ return x.t==='full'?1:0.5; }
 function dayStatus(e,d){ // {tag, label}
   const ds=fmtD(d), r=recOf(ds,e.id), today=todayStr();
-  if(!isWorkday(e,d)) return r&&r.in?{t:'ok',l:'휴일근무'}:{t:'hol',l:'휴무'};
+  if(!isWorkday(e,d)){
+    if(r&&r.in)return {t:'ok',l:'휴일근무'};
+    const hn=holName(fmtD(d));
+    return {t:'hol',l:hn||'휴무'};
+  }
   const lv=leaveOn(ds,e.id);
   if(lv&&lv.t==='full')return{t:'leave',l:'연차'};
   if(!r||!r.in){ if(lv)return{t:'leave',l:LEAVE_NM[lv.t]}; if(ds<today)return{t:'abs',l:'결근'}; return {t:'hol',l:'-'}; }
@@ -1134,19 +1223,28 @@ function monthAgg(e,y,m){
       } else if(ds<today&&!lv){ absent++; absWeeks.add(wi); }   // 결근 '일수'는 날짜가 속한 달에서 센다. 확정된 연차만 면제(대기 신청은 결근 — 정산표에 '확인 대기'로 경고)
     }
   });
-  // ── 결근 '주수'는 달력 주 단위로 센다 ──
-  // 월 경계에 걸친 주(예: 9/28~10/4)를 두 달에서 각각 세면 주휴수당이 2배 공제된다.
-  // 그래서 그 주 '목요일이 속한 달'이 한 번만 갖고(ISO 8601), 판정은 7일 전체를 본다.
+  /* ── 결근 '주수'는 달력 주 단위로 센다 ──
+     월 경계에 걸친 주(예: 9/28~10/4)를 두 달에서 각각 세면 주휴수당이 2배 공제된다.
+     그래서 한 주는 **그 주의 첫 결근일이 있는 달**이 한 번만 갖는다.
+     ('그 주 목요일이 있는 달' 규칙(ISO)은 이중 공제는 막았지만, 공제가 결근한 달이 아닌
+      옆 달로 가고, 그 달에 퇴사하면 급여표에서 빠져 공제가 영구 누락됐다.
+      첫 결근일 기준이면 결근일수와 결근주수가 같은 달에 모여 설명도 된다.) */
   let wCnt=0;
   {
-    const first=new Date(y,m,1), last=new Date(y,m+1,0);
-    for(let mon=weekMon(first); mon<=last; mon.setDate(mon.getDate()+7)){
-      if(!weekOwnsMonth(mon,y,m))continue;          // 옆 달이 가진 주 — 거기서 센다
+    const first=new Date(y,m,1), last=new Date(y,m+1,0), mons=[];
+    for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
+      const ms=+weekMon(d); if(!mons.includes(ms))mons.push(ms);
+    }
+    mons.forEach(ms=>{
+      const mon=new Date(ms);
       for(let k=0;k<7;k++){
         const d=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+k);
-        if(isAbsentOn(e,d,today)){ wCnt++; break; } // 그 주에 결근이 하나라도 있으면 1주
+        if(isAbsentOn(e,d,today)){                  // 그 주의 첫 결근일
+          if(d.getFullYear()===y&&d.getMonth()===m)wCnt++;
+          break;
+        }
       }
-    }
+    });
   }
   return {absent,earlyCnt,lateCnt,attend,totalMin,absentW:wCnt,leave};
 }
@@ -1731,6 +1829,9 @@ function renderStatus(){
   else{
     const y=stDate.getFullYear(),m=stDate.getMonth();
     lb.textContent=`${y}년 ${m+1}월`;
+    const holWarn=holYearKnown(y)?'':`<div class="card" style="background:#FDECEC;border:1.5px solid var(--red);">
+      <b style="color:#A32020;">⚠️ ${y}년 공휴일 표가 없습니다.</b> 설날·추석 등이 결근으로 잡혀 급여가 깎입니다.
+      설정 탭 [공휴일]에서 넣어 주세요.</div>`;
     let h='<div class="card"><div class="tbl-wrap"><table><tr><th>직원</th><th>출근</th><th>지각</th><th>조퇴</th><th>결근</th><th>연차</th><th>총근로</th></tr>';
     visEmps().forEach(e=>{
       const a=monthAgg(e,y,m);
@@ -1741,7 +1842,7 @@ function renderStatus(){
         <td>${a.leave?`<span class="tag leave">${a.leave}</span>`:'-'}</td>
         <td>${Math.floor(a.totalMin/60)}h</td></tr>`;
     });
-    body.innerHTML=h+'</table></div><div class="muted" style="margin-top:10px;">결근은 지난 날짜 기준 자동 판정입니다. 급여 탭에서 수정할 수 있어요.</div></div>';
+    body.innerHTML=holWarn+h+'</table></div><div class="muted" style="margin-top:10px;">결근은 지난 날짜 기준 자동 판정입니다. 공휴일은 결근으로 잡지 않습니다. 급여 탭에서 수정할 수 있어요.</div></div>';
   }
 }
 
@@ -2914,6 +3015,14 @@ async function cloudSync(){
       Object.entries(up).forEach(([d,em])=>Object.keys(em).forEach(id=>queueRec(d,id)));
     }
     window._geo=safeGeoVal(room.geo)||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준, 숫자만)
+    { // 공휴일 추가·제외 (모든 기기 + 급여대장 스크립트가 같은 표를 쓴다)
+      const hc=room.holidays, o={add:{},off:{}};
+      if(hc&&typeof hc==='object'){
+        Object.entries(hc.add||{}).forEach(([k,v])=>{ if(safeDate(k)&&typeof v==='string')o.add[k]=safeTxt(v,30); });
+        Object.keys(hc.off||{}).forEach(k=>{ if(safeDate(k))o.off[k]=true; });
+      }
+      DB.holidays=o;
+    }
     leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
@@ -2972,7 +3081,7 @@ async function cloudSync(){
       if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
       if(document.getElementById('pg-leave').classList.contains('on'))renderLeave();
     }
-    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();}
+    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();renderHolCard();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
   syncBusy=false;
 }
@@ -3853,6 +3962,7 @@ adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 �
 applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
 renderFailBar(); // 서버에 저장되지 못한 내용이 있으면 상단에 띠로 알린다
 try{renderPinWeak();}catch(e){}
+try{renderHolCard();}catch(e){}
 // 부관리자·직원 기기는 설정에 못 들어가므로, 첫 터치 때 알림 권한을 대신 요청
 if(!isOwnerDev()&&('Notification' in window)&&Notification.permission==='default'){
   document.addEventListener('click',()=>{ try{Notification.requestPermission();}catch(e){} },{once:true});
