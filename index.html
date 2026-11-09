@@ -328,8 +328,9 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <div id="empListActive"></div>
     </div>
     <div class="card">
-      <div style="font-weight:800;margin-bottom:4px;color:var(--txt-sub);">근무종료 직원 <span id="cntLeft"></span></div>
-      <div id="empListLeft"></div>
+      <div class="muted" style="font-size:12.5px;">근무가 끝난 직원은 이 목록에서 빠집니다.
+      기록은 그대로 남아 있고, 설정 탭 <b>📦 근무종료 직원 보관함</b> 에서 다시 볼 수 있습니다.</div>
+      <div id="empListLeft" style="display:none;"></div><span id="cntLeft" style="display:none;"></span>
     </div>
   </div>
 
@@ -371,6 +372,10 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div id="setLockBanner" class="card" style="display:none;background:#fff8e6;border:1.5px solid #f0c36d;">
       <div style="font-weight:800;margin-bottom:4px;">🔒 공동 관리자 기기</div>
       <div class="muted">설정 변경은 제작자(원본) 기기에서만 가능합니다. 여기서는 열람만 됩니다.<br>출퇴근·현황·직원관리(직원 추가 포함)·급여는 모두 사용할 수 있어요.</div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:15px;margin-bottom:10px;">📦 근무종료 직원 보관함</h3>
+      <div id="leftBody"></div>
     </div>
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">🗓️ 공휴일</h3>
@@ -685,7 +690,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261106_222458'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261109_095355'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -796,7 +801,7 @@ function go(p,needAdmin){
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
   if(p==='leave')renderLeave();
-  if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();renderGeoCard();renderHolCard();renderPinWeak();}
+  if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();renderGeoCard();renderHolCard();renderPinWeak();renderLeftCard();}
   window.scrollTo(0,0);
 }
 function checkPin(){
@@ -1030,6 +1035,29 @@ function holDel(ds){
   if(setLocked()){toast('제작자 기기에서만 변경할 수 있습니다');return;}
   const c=holCfg(); delete c.add[ds]; delete c.off[ds];
   save(); holPush(); renderHolCard(); recRerender(); toast('되돌렸습니다');
+}
+function renderLeftCard(){
+  const box=document.getElementById('leftBody'); if(!box)return;
+  const left=DB.employees.filter(e=>e.leaveDate).sort((a,b)=>a.leaveDate<b.leaveDate?1:-1);
+  if(!left.length){ box.innerHTML='<div class="muted">근무가 끝난 직원이 없습니다.</div>'; return; }
+  let s=`<div class="muted" style="margin-bottom:8px;">기록은 지우지 않습니다. 지난 달 현황·급여대장에는 그대로 나옵니다.
+    문제가 생기면 여기서 그 직원의 기록을 다시 볼 수 있습니다.</div>`;
+  left.forEach(e=>{
+    const months=Math.max(0,Math.floor((new Date(e.leaveDate)-new Date(e.joinDate))/(30.44*864e5)));
+    const tp=e.type==='regular'?'정직원':e.type==='freelance'?'3.3%':'일용직';
+    s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;">
+      <div><b>${esc(e.name)}</b> <span class="tag hol">${tp}</span>
+        <div class="muted" style="font-size:11.5px;">${esc(e.joinDate)} ~ ${esc(e.leaveDate)} · ${months}개월 근무</div></div>
+      <button class="btn ghost" style="padding:5px 11px;font-size:12px;border-radius:8px;" onclick="leftOpen('${esc(e.id)}')">기록 보기</button></div>`;
+  });
+  box.innerHTML=s;
+}
+function leftOpen(id){
+  const e=emp(id); if(!e)return;
+  const ls=e.leaveDate, y=+ls.slice(0,4), m=+ls.slice(5,7)-1;
+  stDate=new Date(y,m,1); stView='month';
+  go('status',true);
+  setTimeout(()=>toast(`${e.name}님 — 퇴사한 달(${y}년 ${m+1}월) 현황입니다. 화살표로 다른 달도 볼 수 있어요`),300);
 }
 function renderHolCard(){
   const box=document.getElementById('holBody'); if(!box)return;
@@ -3144,18 +3172,31 @@ async function cloudSync(){
       if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
       if(document.getElementById('pg-leave').classList.contains('on'))renderLeave();
     }
-    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();renderHolCard();}
+    if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();renderHolCard();renderLeftCard();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
   syncBusy=false;
 }
 /* ── 출퇴근 알림 ── */
-function pushEvent(kind,empId,hm){
+/* 알림 문구 — 화면 알림·ntfy·회사 PC 웹푸시가 같은 문장을 쓴다 */
+function evText(ev){
+  if(ev.k==='in'||ev.k==='out')return `${ev.n}님이 ${ev.k==='in'?'출근':'퇴근'}했습니다 (${ev.t})`;
+  if(ev.k==='lv')return `${ev.n}님이 연차를 신청했습니다 — ${ev.t}`;
+  if(ev.k==='ot')return `${ev.n}님이 야근을 입력했습니다 — ${ev.t}`;
+  if(ev.k==='rp')return `${ev.n}님이 지각 정정을 신고했습니다 — ${ev.t}`;
+  return `${ev.n}님 — ${ev.t}`;
+}
+function evNeedsOk(ev){ return ev.k==='lv'||ev.k==='ot'||ev.k==='rp'; }   // 관리자 확인이 필요한 것
+/* 직원이 한 일을 **바로** 알린다.
+   ① /events 에 남긴다  → 관리자 앱이 열려 있으면 즉시 화면 알림
+   ② ntfy 로 보낸다     → ntfy 앱을 쓰는 관리자에게 즉시
+   ③ 회사 PC의 알림_감시.py 가 ①을 읽어 **웹푸시**로 보낸다 → 앱이 꺼져 있어도 온다 */
+function pushEvent(kind,empId,txt){
   if(!cloudOn())return;
   const e=emp(empId); if(!e)return;
   const ts=Date.now();
-  const ev={k:kind,i:empId,n:e.name,t:hm,d:todayStr(),ts,r:(e.role==='admin'?'a':'s')};
+  const ev={k:kind,i:empId,n:e.name,t:txt,d:todayStr(),ts,r:(e.role==='admin'?'a':'s')};
   cfetch('/events/e'+ts+Math.random().toString(36).slice(2,5),{method:'PUT',body:JSON.stringify(ev)}).catch(()=>{});
-  sendNtfy(`${e.name}님이 ${kind==='in'?'출근':'퇴근'}했습니다 (${hm})`);
+  sendNtfy(evText(ev));
 }
 async function sendNtfy(msg){ // 폰 푸시 발송 (앱 꺼져 있어도 수신) — 캐시 없으면 클라우드에서 즉시 조회
   try{
@@ -3227,6 +3268,8 @@ async function testBoss(){
 }
 function shouldNotify(ev){
   const c=cloudCfg(); if(!c)return false;
+  // 연차·야근·지각 신청은 **관리자에게만** 알린다 (동료 신청을 직원에게 보여 줄 이유가 없다)
+  if(evNeedsOk(ev))return c.role==='admin'&&ev.i!==c.myEmpId;
   if(c.role==='staff'&&ev.r==='a')return false; // 임원 출퇴근은 직원에게 비노출
   const me=c.role==='staff'?c.myEmpId:'_admin';
   if(c.role==='staff'&&ev.i===c.myEmpId)return false; // 본인 기록은 알림 제외
@@ -3235,11 +3278,12 @@ function shouldNotify(ev){
   return !!rec[me];
 }
 function showNotif(ev){
-  const msg=`${ev.n}님이 ${ev.k==='in'?'출근':'퇴근'}했습니다 (${ev.t})`;
+  const msg=evText(ev);
   toast('🔔 '+msg);
   try{
     if(window.Notification&&Notification.permission==='granted')
-      new Notification('리플래시 work',{body:msg,icon:'logo_round.png',tag:'punch'+ev.ts});
+      new Notification(evNeedsOk(ev)?'리플래시 work — 확인 필요':'리플래시 work',
+        {body:msg+(evNeedsOk(ev)?'\n앱에서 확인(승인)해 주세요':''),icon:'logo_round.png',tag:'ev'+ev.ts});
   }catch(e){}
 }
 function handleEvents(events){
@@ -3382,6 +3426,7 @@ function saveLvReq(){
   Object.assign(leavesDB().items,add); save();
   Object.keys(add).forEach(id=>queueLeave(id,true));   // 실패해도 자동 재전송 — 조용히 사라지지 않는다
   closeM('mdLvReq'); leaveYear=+days[0].slice(0,4); renderLeave();
+  pushEvent('lv',e.id,`${LEAVE_NM[t]} ${days.length}건 (${days[0].slice(5).replace('-','.')}${days.length>1?' 외':''})`);
   toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`);
 }
 /* ── 관리자: 승인 / 반려 ── */
@@ -3497,6 +3542,7 @@ function saveOtRpt(){
   delete r.otOk;                                  // 다시 입력하면 확인 대기로
   DB.records[ds][empId]=r; save(); queueRec(ds,empId);
   closeM('mdOtRpt'); renderKiosk();
+  pushEvent('ot',empId,`${ds.slice(5).replace('-','.')} ${v}까지 (${fmtHM(toMin(v)-toMin(e.schedule.end))})`);
   toast(`야근 ${fmtHM(toMin(v)-toMin(e.schedule.end))} 입력했습니다 — 관리자 확인 후 반영됩니다`);
 }
 function delOtRpt(){
@@ -3555,6 +3601,7 @@ function saveLateRpt(){
   r.rin=t; if(memo)r.rmemo=memo; delete r.rok;
   DB.records[ds][empId]=r; save(); queueRec(ds,empId);
   closeM('mdLateRpt'); renderKiosk();
+  pushEvent('rp',empId,`${ds.slice(5).replace('-','.')} 찍은 시각 ${r.in} → 실제 ${t}`);
   toast('신고했습니다. 관리자 확인 후 반영됩니다');
 }
 /* ── 관리자: 신고 확인 ── */
@@ -3701,7 +3748,7 @@ async function pushEnable(){
     DB.settings.pushSub=j.endpoint; save();
     if(cloudOn()){
       await cfetch('/push/'+devId(),{method:'PUT',body:JSON.stringify({
-        e:who.id, n:0, sub:j, ts:Date.now(),
+        e:who.id, n:0, sub:j, ts:Date.now(), r:(isStaffDev()?'s':'a'),
         ua:(isIOS()?'iPhone':/Android/i.test(navigator.userAgent)?'Android':'PC')})});
     }
     renderPushUI(); toast('폰 알림이 켜졌습니다! 📲');
@@ -4026,6 +4073,7 @@ applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
 renderFailBar(); // 서버에 저장되지 못한 내용이 있으면 상단에 띠로 알린다
 try{renderPinWeak();}catch(e){}
 try{renderHolCard();}catch(e){}
+try{renderLeftCard();}catch(e){}
 // 부관리자·직원 기기는 설정에 못 들어가므로, 첫 터치 때 알림 권한을 대신 요청
 if(!isOwnerDev()&&('Notification' in window)&&Notification.permission==='default'){
   document.addEventListener('click',()=>{ try{Notification.requestPermission();}catch(e){} },{once:true});
