@@ -417,6 +417,8 @@ body.no-scroll{overflow:hidden;touch-action:none;}
         ※ 직원 폰에는 이름·출퇴근 시각만 보입니다. 급여·주민번호·계좌는 암호화되어 관리자 기기끼리만 공유됩니다.</div>
       </div>
       <button class="btn y wide" style="margin-top:6px;" onclick="adminDeviceLink()">🖥️ 내 컴퓨터에서도 관리자로 쓰기 (링크 복사)</button>
+      <button id="btnCopyKey" class="btn ghost wide" style="display:none;margin-top:6px;" onclick="copyPayKey()">🔑 급여 암호키 복사</button>
+      <div id="keyHelp" class="muted" style="display:none;font-size:12px;margin-top:6px;">회사 PC 의 <b>자동발송\급여_암호키.txt</b> 에 붙여넣으면, 월말 급여대장에 급여가 자동으로 들어갑니다.</div>
       <button id="cloudOff" class="btn red wide" style="display:none;margin-top:6px;" onclick="cloudDisable()">연동 해제</button>
     </div>
     <div class="card">
@@ -722,7 +724,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261109_141726'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261109_152517'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -4570,11 +4572,31 @@ function renderCloudStatus(){
     const role=c.role==='staff'?'직원 모드':c.owner!==false?'메인 관리자':(c.key?'관리자':'부관리자');
     st.innerHTML=`✅ <b>연동됨</b> (${role}) · 마지막 동기화: ${DB.settings.lastSync||'-'}`;
     setup.style.display='none'; off.style.display='block';
+    /* 암호키는 관리자 기기에만 있다 — 그 기기에서만 꺼낼 수 있게 한다 */
+    const bk=document.getElementById('btnCopyKey'), kh=document.getElementById('keyHelp');
+    if(bk)bk.style.display=c.key?'block':'none';
+    if(kh)kh.style.display=c.key?'block':'none';
   }else{
     st.textContent='아직 연동되지 않았습니다. (이 기기에만 저장 중)';
     setup.style.display='block'; off.style.display='none';
   }
   applyNavVis();
+}
+/* 급여 암호키 꺼내기 — 회사 PC 의 월말 급여대장이 암호화된 급여를 풀 때 쓴다.
+   이 키가 없으면 대장에 급여가 0원으로 나온다(정유진·박은성 2026-10 처럼).
+   키는 관리자 초대 링크 안에만 있어서 사람이 꺼낼 길이 없었다 — 그래서 만든 버튼이다. */
+function copyPayKey(){
+  const c=cloudCfg();
+  if(!c||!c.key){ toast('이 기기에는 암호키가 없습니다 (메인 관리자·관리자 기기에서만 됩니다)'); return; }
+  const msg='리플래시 work 급여 암호키\n\n'+c.key+'\n\n'
+    +'회사 PC 의 자동발송\\급여_암호키.txt 에 위 64자리만 붙여넣고 저장하세요.\n'
+    +'다른 사람에게 보내지 마세요 — 이 키로 급여·주민번호·계좌를 볼 수 있습니다.';
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(c.key)
+      .then(()=>toast('암호키를 복사했습니다 — 급여_암호키.txt 에 붙여넣으세요'))
+      .catch(()=>prompt('아래 64자리를 복사하세요', c.key));
+  } else prompt('아래 64자리를 복사하세요', c.key);
+  console.log(msg);
 }
 function copyInvite(){
   const c=cloudCfg();
