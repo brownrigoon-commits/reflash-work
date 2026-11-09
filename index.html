@@ -690,7 +690,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261109_095355'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261109_103839'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -2154,7 +2154,7 @@ function calcRegular(e,y,m){
   const absentW=o.absentW!=null?nn(o.absentW):agg.absentW;
   const sal=Math.max(0,Number(e.salary)||0);   // 문자열·null 도 받아낸다
   const wage=Math.round(sal/209);
-  const base=wage*174, jh=sal-base;      // 기본급+주휴 = 월급 (반올림 오차 제거)
+  const base=wage*174, jh=Math.round(wage*35);   // 209시간 = 기본급 174 + 주휴 35 (세무사무실 대장과 같은 식)
   const dedDays=absent+early*0.5;
   const dedWork=Math.round(wage*8*dedDays);
   // 주휴 공제는 소정근로일 비례. 주 2일 근무자에게 8시간 전액을 물리면 과공제다(52,824원).
@@ -2669,102 +2669,543 @@ function weekDetail(e,y,m){ // 최대 5주로 병합
   return out;
 }
 
-/* ================== 엑셀(SpreadsheetML) ================== */
-function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function cellS(v,st){ return `<Cell${st?` ss:StyleID="${st}"`:''}><Data ss:Type="String">${xmlEsc(v)}</Data></Cell>`; }
-function cellN(v,st){ return `<Cell${st?` ss:StyleID="${st}"`:''}><Data ss:Type="Number">${v||0}</Data></Cell>`; }
-function rowX(cells){ return `<Row>${cells.join('')}</Row>`; }
-function buildLedgerXML(y,m){
+/* ================== 급여 공제 관리대장 (진짜 .xlsx) ==================
+   회사가 쓰던 양식 그대로. 색칠된 칸이 입력칸, 흰 칸은 수식이다.
+   세무사무실이 결근·조퇴 칸을 고치면 공제·실수령이 그 자리에서 다시 계산된다.
+   양식 정의는 자동발송\급여대장_양식.py 와 **같은 사양**이어야 한다(스타일 이름까지). */
+const LG_COLS=25, LG_MIN_REG=7, LG_MIN_FREE=6, LG_MIN_DAILY=5;
+const LG_W=[4,14.6,16.7,13,11,7,7.3,9.6,6,7,6,7,6,7,6,8,8,9,7,12,15.7,12,13.7,19.6,13];
+const LG_HEAD_REG=['No','직원명','주민번호','월급여\n(세전)','통상시급\n(자동)',
+ '1주차\n결근','1주차\n조퇴','2주차\n결근','2주차\n조퇴','3주차\n결근','3주차\n조퇴',
+ '4주차\n결근','4주차\n조퇴','5주차\n결근','5주차\n조퇴','결근\n일수','조퇴\n일수',
+ '공제일수\n합계','결근\n주수','기본급\n(근로분)','주휴\n수당','근로분\n공제','주휴\n공제','총공제액','실수령\n급여'];
+const LG_SUB_REG=['','','','(원)','(자동)','일수','0.5등','일수','0.5등','일수','0.5등','일수','0.5등',
+ '일수','0.5등','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)'];
+const LG_HEAD_FREE=['No','직원명','주민번호','월 용역비\n(원)','3%\n원천징수','0.3%\n원천징수','소득세&지방세\n합계','실지급액'];
+const LG_SUB_FREE=['','','','(원)','(자동)','(자동)','(자동)','(자동)'];
+const LG_HEAD_DAY=['No','직원명','주민번호','시급\n(원)','일근로\n시간(h)',
+ '1주차\n출근일','1주차\n조퇴(h)','2주차\n출근일','2주차\n조퇴(h)','3주차\n출근일','3주차\n조퇴(h)',
+ '4주차\n출근일','4주차\n조퇴(h)','5주차\n출근일','5주차\n조퇴(h)','총출근\n일수','총조퇴\n시간',
+ '총근로\n시간','주휴\n대상주','기본\n급여','주휴\n수당','','','총급여','비고'];
+const LG_SUB_DAY=['','','','(원)','(시간)','일수','시간','일수','시간','일수','시간','일수','시간',
+ '일수','시간','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','','','(자동)',''];
+function lgCol(i){ let s=''; while(i>0){ const r=(i-1)%26; s=String.fromCharCode(65+r)+s; i=(i-r-1)/26; } return s; }
+
+/* y, m(1~12) + 사람 목록 → '셀 목록'. 급여대장_양식.build_ledger_spec 과 같은 결과여야 한다. */
+function buildLedgerSpec(y,m,regs,frees,dailys,notes){
+  const cells=[],merges=[],heights={};
+  const put=(r,c,v,f,s)=>{ const d={r:r,c:c,s:s||'plain'};
+    if(f!=null)d.f=f; else if(v!=null)d.v=v; cells.push(d); };
+  const band=(r,head,sub,fh,fs)=>{ head.forEach((t,i)=>put(r,i+1,t,null,fh));
+    sub.forEach((t,i)=>put(r+1,i+1,t,null,fs)); heights[r]=36.75; };
+  const title=`주식회사 리플래시 — ${y}년 ${m}월 급여 공제 관리대장`;
+  put(1,1,title,null,'title'); merges.push([1,1,1,LG_COLS]); heights[1]=25.5;
+  put(2,1,'※ 정직원(임원+직원): 월급제(209시간) | 3.3%사업소득자: 용역비 | 일용직: 시급제',null,'note');
+  merges.push([2,1,2,LG_COLS]);
+
+  /* ── 정직원 ── */
+  put(4,1,'■ 정직원 — 결근·조퇴 공제 계산',null,'sec_reg'); merges.push([4,1,4,LG_COLS]);
+  band(5,LG_HEAD_REG,LG_SUB_REG,'head_reg','sub_reg');
+  const nReg=Math.max(LG_MIN_REG,regs.length), r0=7;
+  for(let i=0;i<nReg;i++){
+    const r=r0+i, e=regs[i]||null;
+    put(r,1,i+1,null,'no');
+    put(r,2,e?e.name:null,null,'in_txt');
+    put(r,3,e?(e.rrn||''):null,null,'in_txt');
+    put(r,4,e?e.salary:null,null,'in_money');
+    put(r,5,null,`IF(D${r}="","",ROUND(D${r}/209,0))`,'auto_money');
+    const wk=(e&&e.week)||[[0,0],[0,0],[0,0],[0,0],[0,0]];
+    /* man = [결근일수, 조퇴0.5등, 결근주수] — 급여탭에서 손으로 고친 행.
+       주차별 내역이 사실상 없으므로 주차칸을 비우고 월 합계를 입력칸으로 쓴다.
+       (안 그러면 대장이 고치기 전 숫자로 계산해 앱과 다른 돈을 말한다) */
+    const man=(e&&e.man)||null;
+    for(let k=0;k<5;k++){
+      put(r,6+k*2,(man||!e)?null:(wk[k][0]||null),null,'in_num');
+      /* 조퇴는 '0.5등' 단위로 들어온다 (1건 = 0.5). 서식이 '0' 이면 0.5 가 1 로 보인다. */
+      put(r,7+k*2,(man||!e)?null:(wk[k][1]||null),null,'in_num_e');
+    }
+    if(man){
+      put(r,16,man[0],null,'in_num');
+      put(r,17,man[1]||null,null,'in_num_e');
+    }else{
+      put(r,16,null,`IF(D${r}="","",SUM(F${r},H${r},J${r},L${r},N${r}))`,'auto_num_b');
+      put(r,17,null,`IF(D${r}="","",SUM(G${r},I${r},K${r},M${r},O${r}))`,'auto_num_h');
+    }
+    put(r,18,null,`IF(D${r}="","",P${r}+Q${r})`,'auto_num_h');
+    /* 결근주수를 수식으로 둘 수 없는 경우: 손으로 고친 행(man), 또는 달력 주가 6개인 달
+       (주차칸 5개에 두 주가 합쳐져 칸 하나로 '두 주 각각' 을 말할 수 없다) */
+    const sVal=man?man[2]:(e?(e.absW!=null?e.absW:null):null);
+    if(sVal!=null){
+      put(r,19,sVal,null,'in_num');
+    }else{
+      /* 주차칸은 '그 달 날짜'만 담는다. 걸친 주를 지난달이 가졌다면(그 주 첫 결근이 지난달)
+         여기서 또 세면 주휴를 두 번 공제한다 → 그 행의 1주차 항만 뺀다. */
+      const own1=e?(e.ownFirst!==false):true;
+      const sTerms=[0,1,2,3,4].filter(k=>k>0||own1)
+        .map(k=>`COUNTIF(${lgCol(6+k*2)}${r},">0")`).join('+');
+      put(r,19,null,`IF(D${r}="","",${sTerms})`,'auto_num_b');
+    }
+    put(r,20,null,`IF(D${r}="","",ROUND(E${r}*174,0))`,'auto_money');
+    /* 209시간 = 기본급 174 + 주휴 35. 기준 양식과 같은 식을 쓴다. */
+    put(r,21,null,`IF(D${r}="","",ROUND(E${r}*35,0))`,'auto_money');
+    put(r,22,null,`IF(OR(D${r}="",R${r}="",R${r}=0),"",ROUND(E${r}*8*R${r},0))`,'auto_money');
+    /* 주휴 공제는 소정근로일 비례. 주5일이면 계수가 1 이라 기준 양식과 같은 식이 된다. */
+    const ratio=(e&&e.jhRatio)||1, rf=(ratio===1?'':'*'+ratio);
+    put(r,23,null,`IF(OR(D${r}="",S${r}="",S${r}=0),"",ROUND(E${r}*8*S${r}${rf},0))`,'auto_money');
+    /* 25칸 양식에는 일할공제 열이 없다. 월중 입·퇴사면 한 달치가 그대로 나가므로
+       총공제액에 '한 달치 - 재직일분' 을 덧붙인다 (D·E 는 그대로여서 공제 계산이 안 어긋난다). */
+    const pro=(e&&e.pro)||null;
+    const px=(pro&&pro[0]<pro[1])?`+(D${r}-ROUND(D${r}*${pro[0]}/${pro[1]},0))`:'';
+    put(r,24,null,`IF(D${r}="","",IF(V${r}="",0,V${r})+IF(W${r}="",0,W${r})${px})`,'ded_total');
+    put(r,25,null,`IF(D${r}="","",D${r}-X${r})`,'net');
+  }
+  const rs=r0+nReg;
+  put(rs,2,'정직원 소계',null,'sum_head_reg');
+  put(rs,4,null,`SUM(D${r0}:D${rs-1})`,'sum_money_reg');
+  for(let c=16;c<=25;c++)
+    put(rs,c,null,`SUM(${lgCol(c)}${r0}:${lgCol(c)}${rs-1})`,
+      c===25?'sum_net':(c===16||c===19)?'sum_num_reg':(c===17||c===18)?'sum_numh_reg':'sum_money_reg');
+
+  /* ── 3.3% 사업소득자 ── */
+  let r=rs+2;
+  put(r,1,'■ 3.3% 사업소득자 — 용역비 지급',null,'sec_free'); merges.push([r,1,r,LG_COLS]);
+  band(r+1,LG_HEAD_FREE,LG_SUB_FREE,'head_free','sub_free');
+  const f0=r+3, nFree=Math.max(LG_MIN_FREE,frees.length);
+  for(let i=0;i<nFree;i++){
+    const rr=f0+i, e=frees[i]||null;
+    put(rr,1,i+1,null,'no');
+    put(rr,2,e?e.name:null,null,'in_txt_f');
+    put(rr,3,e?(e.rrn||''):null,null,'in_txt_f');
+    put(rr,4,e?e.fee:null,null,'in_money_f');
+    put(rr,5,null,`IF(D${rr}="","",ROUNDDOWN(D${rr}*3%,-1))`,'auto_money');
+    put(rr,6,null,`IF(E${rr}="","",ROUNDDOWN(E${rr}*10%,-1))`,'auto_money');
+    put(rr,7,null,`IF(D${rr}="","",E${rr}+F${rr})`,'auto_money');
+    put(rr,8,null,`IF(D${rr}="","",D${rr}-G${rr})`,'net');
+  }
+  const fs=f0+nFree;
+  put(fs,2,'사업소득 소계',null,'sum_head_free');
+  for(let c=4;c<=8;c++)
+    put(fs,c,null,`SUM(${lgCol(c)}${f0}:${lgCol(c)}${fs-1})`,c===8?'sum_net':'sum_money_free');
+
+  /* ── 일용직 ── */
+  r=fs+2;
+  put(r,1,'■ 일용직 — 시급제 급여 계산 (주5일 개근 시 주휴수당 발생)',null,'sec_day'); merges.push([r,1,r,LG_COLS]);
+  band(r+1,LG_HEAD_DAY,LG_SUB_DAY,'head_day','sub_day');
+  const d0=r+3, nDay=Math.max(LG_MIN_DAILY,dailys.length);
+  for(let i=0;i<nDay;i++){
+    const rr=d0+i, e=dailys[i]||null;
+    put(rr,1,i+1,null,'no');
+    put(rr,2,e?e.name:null,null,'in_txt_d');
+    put(rr,3,e?(e.rrn||''):null,null,'in_txt_d');
+    put(rr,4,e?e.hourly:null,null,'in_money_d');
+    put(rr,5,e?e.dailyH:null,null,'in_num_d');
+    const wk=(e&&e.week)||[[0,0],[0,0],[0,0],[0,0],[0,0]];
+    for(let k=0;k<5;k++){
+      put(rr,6+k*2,e?(wk[k][0]||null):null,null,'in_num_d');
+      put(rr,7+k*2,e?(wk[k][1]||null):null,null,'in_num_dh');
+    }
+    put(rr,16,null,`IF(D${rr}="","",SUM(F${rr},H${rr},J${rr},L${rr},N${rr}))`,'auto_num_b');
+    put(rr,17,null,`IF(D${rr}="","",SUM(G${rr},I${rr},K${rr},M${rr},O${rr}))`,'auto_num_h');
+    /* 총근로시간은 출퇴근 기록에서 실제 계산한 값이다 ('출근일수 × 소정시간' 어림이 아니다) */
+    if(e&&e.hours!=null)put(rr,18,Math.round(e.hours*100)/100,null,'in_num_dh');
+    else put(rr,18,null,`IF(D${rr}="","",P${rr}*E${rr}-Q${rr})`,'auto_num_h');
+    /* 주휴 대상주 — 칸마다 기준 일수가 다르다.
+       wkMeta[k] = [기준 출근일수, 그 칸이 주는 주수] / null = 그 주는 주휴 대상이 아니다
+       (공휴일로 소정근로일이 줄어든 주, 달에 걸쳐 옆 달 쪽에 결근이 있는 주 등) */
+    if(e&&e.jhW!=null){
+      put(rr,19,e.jhW,null,'in_num');          // 달력 주가 6개인 달 — 수식으로 둘 수 없다
+    }else{
+      const wkm=(e&&e.wkMeta)||[[5,1],[5,1],[5,1],[5,1],[5,1]];
+      const terms=[0,1,2,3,4].filter(k=>wkm[k])
+        .map(k=>`IF(${lgCol(6+k*2)}${rr}>=${wkm[k][0]},${wkm[k][1]},0)`);
+      put(rr,19,null,`IF(D${rr}="","",${terms.join('+')||0})`,'auto_num_b');
+    }
+    put(rr,20,null,`IF(OR(D${rr}="",R${rr}="",R${rr}=0),"",ROUND(D${rr}*R${rr},0))`,'auto_money');
+    /* 주휴 = 시급 × 1일 소정근로시간 × 개근 주수 (앱 calcDaily 와 같은 식) */
+    put(rr,21,null,`IF(OR(D${rr}="",S${rr}="",S${rr}=0),"",ROUND(D${rr}*E${rr}*S${rr},0))`,'auto_money');
+    put(rr,24,null,`IF(D${rr}="","",IF(T${rr}="",0,T${rr})+IF(U${rr}="",0,U${rr}))`,'day_total');
+  }
+  const ds=d0+nDay;
+  put(ds,2,'일용직 소계',null,'sum_head_day');
+  [16,17,18,19,20,21,24].forEach(c=>put(ds,c,null,`SUM(${lgCol(c)}${d0}:${lgCol(c)}${ds-1})`,
+    (c===16||c===19)?'sum_num_day':(c===17||c===18)?'sum_numh_day':'sum_money_day'));
+
+  /* ── 총합계 ── */
+  r=ds+2;
+  put(r,1,'■ 총합계',null,'sec_tot'); merges.push([r,1,r,LG_COLS]);
+  put(r+1,2,'총  합  계',null,'tot_head');
+  put(r+1,21,'정직원 실지급',null,'tot_head');
+  put(r+1,22,'3.3% 실지급',null,'tot_head');
+  put(r+1,23,'일용직 총급여',null,'tot_head');
+  put(r+1,24,'이달 총인건비',null,'tot_head');
+  put(r+2,2,'금액',null,'tot_head');
+  put(r+2,21,null,`Y${rs}`,'tot_money');
+  put(r+2,22,null,`H${fs}`,'tot_money');
+  put(r+2,23,null,`X${ds}`,'tot_money');
+  put(r+2,24,null,`U${r+2}+V${r+2}+W${r+2}`,'tot_grand');
+
+  /* ── 입력 안내 ── */
+  const g=r+4;
+  put(g,1,'■ 입력 안내',null,'sec_tot'); merges.push([g,1,g,LG_COLS]);
+  const guide=['【정직원】 월급여 입력 → 기본급(근로분)·주휴수당 자동계산 | 결근/조퇴 입력 → 공제·실수령 자동',
+   '【3.3%사업소득자】 보라색: 직원명, 월 용역비 입력 → 3%소득세+0.3%지방세 원천징수·실지급액 자동',
+   '【일용직】 주황색: 직원명, 시급, 일근로시간 | 주차별 출근일수, 조퇴시간 → 주휴수당·총급여 자동',
+   '★ 주휴수당(일용직): 그 주 소정근로일 개근 시 발생 | = 시급 × 1일 소정근로시간 × 개근 주수',
+   '   (주휴 대상주 칸의 기준 일수는 주마다 다릅니다 — 공휴일로 줄어든 주, 달에 걸친 주를 앱이 계산해 넣었습니다)',
+   '★ 색칠된 칸이 입력칸입니다. 흰 칸은 수식이라 고치지 마세요 — 고치면 자동계산이 끊깁니다.',
+   '★ 결근·조퇴는 근태관리 앱의 출퇴근 기록에서 자동으로 채웠습니다. 공휴일·승인된 연차는 결근이 아닙니다.',
+   '★ 조퇴 칸은 0.5등 단위입니다 (조퇴 1건 = 0.5일). 결근 칸은 일수입니다.',
+   '★ 기본급(174시간) + 주휴수당(35시간) = 통상시급 × 209시간 이라, 월급여와 몇십 원 차이가 납니다 (통상시급 반올림). 지급액은 실수령 급여 칸입니다.',
+   '★ 주차칸이 비고 결근일수·조퇴일수·결근주수에 색이 들어간 행은 손으로 고친 행입니다 (그 세 칸을 고치면 다시 계산됩니다).',
+   '★ 색이 들어간 결근주수·주휴대상주·총근로시간 칸은 앱이 기록에서 계산해 넣은 값입니다 (수식으로 둘 수 없는 칸 — 고치면 금액은 다시 계산됩니다).',
+   '★ 월중 입·퇴사자는 총공제액 수식에 일할공제가 함께 들어 있습니다 (월급여 칸은 한 달치).'
+  ].concat(notes||[]);
+  guide.forEach((t,i)=>{ put(g+1+i,1,t,null,'guide'); merges.push([g+1+i,1,g+1+i,LG_COLS]); });
+  return {title:title,cells:cells,merges:merges,widths:LG_W,heights:heights,rows:g+guide.length};
+}
+
+/* ── 아주 작은 xlsx 쓰기 (ZIP STORE + OOXML) ──
+   압축을 쓰지 않으므로 CRC32 만 있으면 된다. 엑셀·구글시트가 그대로 읽는다. */
+let _crcT=null;
+function crc32(buf){
+  if(!_crcT){ _crcT=new Uint32Array(256);
+    for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); _crcT[n]=c>>>0; } }
+  let c=0xFFFFFFFF; for(let i=0;i<buf.length;i++)c=_crcT[(c^buf[i])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;
+}
+function zipStore(files){
+  const u8=(...a)=>Uint8Array.from(a);
+  const w16=v=>u8(v&255,(v>>8)&255);
+  const w32=v=>u8(v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255);
+  const cat=arr=>{ let n=0; arr.forEach(x=>n+=x.length); const o=new Uint8Array(n); let p=0;
+    arr.forEach(x=>{o.set(x,p);p+=x.length;}); return o; };
+  const DT=33;   // 1980-01-01 — 시각을 넣지 않아 같은 자료면 같은 파일이 나온다
+  const parts=[], cd=[]; let off=0;
+  files.forEach(f=>{
+    const nm=new TextEncoder().encode(f.name), c=crc32(f.data), n=f.data.length;
+    const lh=cat([w32(0x04034b50),w16(20),w16(0),w16(0),w16(0),w16(DT),w32(c),w32(n),w32(n),
+      w16(nm.length),w16(0),nm]);
+    parts.push(lh,f.data);
+    cd.push(cat([w32(0x02014b50),w16(20),w16(20),w16(0),w16(0),w16(0),w16(DT),w32(c),w32(n),w32(n),
+      w16(nm.length),w16(0),w16(0),w16(0),w16(0),w32(0),w32(off),nm]));
+    off+=lh.length+n;
+  });
+  const cdb=cat(cd);
+  return cat(parts.concat([cdb,cat([w32(0x06054b50),w16(0),w16(0),w16(files.length),
+    w16(files.length),w32(cdb.length),w32(off),w16(0)])]));
+}
+/* [이름, 굵게, 크기, 글자색, 배경색, 숫자형식, 가로정렬, 줄바꿈] — 급여대장_쓰기.STYLES 와 같다 */
+const LG_STYLES=[
+ ['in_num_e',0,9,null,'FFFCE4EC','0.0#','center',0],
+ ['in_num_dh',0,9,null,'FFFBE5D6','0.0#','center',0],
+ ['auto_num_h',1,9,null,null,'0.0#','center',0],
+ ['ded_total',1,10,null,'FFFFF2CC','#,##0','right',0],
+ ['sum_num_reg',1,9,null,'FFD6E4F0','0','center',0],
+ ['sum_numh_reg',1,9,null,'FFD6E4F0','0.0#','center',0],
+ ['sum_num_day',1,9,null,'FFFBE5D6','0','center',0],
+ ['sum_numh_day',1,9,null,'FFFBE5D6','0.0#','center',0],
+ ['title',1,13,'FF2F5496',null,'General','left',0],
+ ['note',0,8,'FF888888',null,'General','left',0],
+ ['guide',0,8,'FF444444',null,'General','left',0],
+ ['sec_reg',1,11,'FF2F5496',null,'General','left',0],
+ ['sec_free',1,11,'FF7B2D8E',null,'General','left',0],
+ ['sec_day',1,11,'FFC55A11',null,'General','left',0],
+ ['sec_tot',1,11,'FF1F4E79',null,'General','left',0],
+ ['head_reg',1,10,'FFFFFFFF','FF2F5496','General','center',1],
+ ['head_free',1,10,'FFFFFFFF','FF7B2D8E','General','center',1],
+ ['head_day',1,10,'FFFFFFFF','FFC55A11','General','center',1],
+ ['sub_reg',0,8,'FF888888','FFD6E4F0','General','center',0],
+ ['sub_free',0,8,'FF888888','FFF3E8F9','General','center',0],
+ ['sub_day',0,8,'FF888888','FFFBE5D6','General','center',0],
+ ['no',0,9,null,null,'0','center',0],
+ ['in_txt',1,9,null,'FFD6E4F0','General','center',0],
+ ['in_money',1,10,'FF0000FF','FFD6E4F0','#,##0','right',0],
+ ['in_num',0,9,null,'FFD6E4F0','0','center',0],
+ ['in_txt_f',1,9,null,'FFF3E8F9','General','center',0],
+ ['in_money_f',1,10,'FF0000FF','FFF3E8F9','#,##0','right',0],
+ ['in_txt_d',1,9,null,'FFFBE5D6','General','center',0],
+ ['in_money_d',1,10,'FF0000FF','FFFBE5D6','#,##0','right',0],
+ ['in_num_d',0,9,null,'FFFBE5D6','0','center',0],
+ ['auto_money',0,9,null,null,'#,##0','right',0],
+ ['auto_num_b',1,9,null,null,'0','center',0],
+ ['net',1,9,null,'FFFFFF00','#,##0','right',0],
+ ['day_total',1,10,'FFC55A11','FFFFF2CC','#,##0','right',0],
+ ['sum_head_reg',1,10,'FFFFFFFF','FF2F5496','General','center',0],
+ ['sum_head_free',1,10,'FFFFFFFF','FF7B2D8E','General','center',0],
+ ['sum_head_day',1,10,'FFFFFFFF','FFC55A11','General','center',0],
+ ['sum_money_reg',1,9,null,'FFD6E4F0','#,##0','right',0],
+ ['sum_money_free',1,9,null,'FFF3E8F9','#,##0','right',0],
+ ['sum_money_day',1,9,null,'FFFBE5D6','#,##0','right',0],
+ ['sum_net',1,9,null,'FFFFFF00','#,##0','right',0],
+ ['tot_head',1,11,'FFFFFFFF','FF1F4E79','General','center',0],
+ ['tot_money',1,12,'FFFFFFFF','FF1F4E79','#,##0','right',0],
+ ['tot_grand',1,14,'FFFFD700','FF1F4E79','"\u20a9"#,##0','right',0],
+ ['plain',0,9,null,null,'General','center',0]];
+const LG_NOBORDER={title:1,note:1,guide:1,sec_reg:1,sec_free:1,sec_day:1,sec_tot:1};
+const lgIdx={}; LG_STYLES.forEach((s,k)=>lgIdx[s[0]]=k);
+function lgEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function lgStylesXml(){
+  const fmts=[]; LG_STYLES.forEach(s=>{ if(s[5]!=='General'&&fmts.indexOf(s[5])<0)fmts.push(s[5]); });
+  const numId=f=>f==='General'?0:(164+fmts.indexOf(f));
+  const fills=['none','gray125'];
+  LG_STYLES.forEach(s=>{ if(s[4]&&fills.indexOf(s[4])<0)fills.push(s[4]); });
+  let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+   +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
+  x+=`<numFmts count="${fmts.length}">`
+   +fmts.map((f,k)=>`<numFmt numFmtId="${164+k}" formatCode="${lgEsc(f)}"/>`).join('')+'</numFmts>';
+  x+=`<fonts count="${LG_STYLES.length}">`+LG_STYLES.map(s=>
+    `<font><sz val="${s[2]}"/>${s[1]?'<b/>':''}${s[3]?`<color rgb="${s[3]}"/>`:''}`
+    +'<name val="맑은 고딕"/></font>').join('')+'</fonts>';
+  x+=`<fills count="${fills.length}">`+fills.map(f=>(f==='none'||f==='gray125')
+    ?`<fill><patternFill patternType="${f}"/></fill>`
+    :`<fill><patternFill patternType="solid"><fgColor rgb="${f}"/><bgColor indexed="64"/></patternFill></fill>`
+    ).join('')+'</fills>';
+  x+='<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
+   +'<border><left style="thin"><color rgb="FFDDDDDD"/></left><right style="thin"><color rgb="FFDDDDDD"/></right>'
+   +'<top style="thin"><color rgb="FFDDDDDD"/></top><bottom style="thin"><color rgb="FFDDDDDD"/></bottom>'
+   +'<diagonal/></border></borders>';
+  x+='<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>';
+  x+=`<cellXfs count="${LG_STYLES.length}">`+LG_STYLES.map((s,k)=>
+    `<xf numFmtId="${numId(s[5])}" fontId="${k}" fillId="${s[4]?fills.indexOf(s[4]):0}"`
+    +` borderId="${LG_NOBORDER[s[0]]?0:1}" xfId="0" applyFont="1" applyFill="1" applyBorder="1"`
+    +` applyAlignment="1" applyNumberFormat="1">`
+    +`<alignment horizontal="${s[6]}" vertical="center"${s[7]?' wrapText="1"':''}/></xf>`).join('')
+   +'</cellXfs>';
+  x+='<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  return x;
+}
+function lgSheetXml(spec,freeze){
+  const byRow={};
+  spec.cells.forEach(c=>{ (byRow[c.r]=byRow[c.r]||[]).push(c); });
+  let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+   +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+   +'<sheetViews><sheetView showGridLines="0" workbookViewId="0">'
+   +(freeze?`<pane ySplit="${freeze}" topLeftCell="A${freeze+1}" activePane="bottomLeft" state="frozen"/>`:'')
+   +'</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>'
+   +spec.widths.map((w,k)=>`<col min="${k+1}" max="${k+1}" width="${w}" customWidth="1"/>`).join('')
+   +'</cols><sheetData>';
+  Object.keys(byRow).map(Number).sort((a,b)=>a-b).forEach(r=>{
+    const ht=spec.heights[r];
+    x+=`<row r="${r}"${ht?` ht="${ht}" customHeight="1"`:''}>`;
+    byRow[r].sort((a,b)=>a.c-b.c).forEach(c=>{
+      const ref=lgCol(c.c)+c.r, st=(lgIdx[c.s]!=null?lgIdx[c.s]:lgIdx.plain);
+      if(c.f!=null)x+=`<c r="${ref}" s="${st}"><f>${lgEsc(c.f)}</f></c>`;
+      else if(c.v==null||c.v==='')x+=`<c r="${ref}" s="${st}"/>`;
+      else if(typeof c.v==='number')x+=`<c r="${ref}" s="${st}"><v>${c.v}</v></c>`;
+      else x+=`<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${lgEsc(c.v)}</t></is></c>`;
+    });
+    x+='</row>';
+  });
+  x+='</sheetData>';
+  const mg=(spec.merges||[]).filter(a=>a[0]!==a[2]||a[1]!==a[3]);
+  if(mg.length)x+=`<mergeCells count="${mg.length}">`
+   +mg.map(a=>`<mergeCell ref="${lgCol(a[1])}${a[0]}:${lgCol(a[3])}${a[2]}"/>`).join('')+'</mergeCells>';
+  return x+'</worksheet>';
+}
+function buildXlsx(sheets){   // sheets: [{name, spec, freeze}]
+  const enc=s=>new TextEncoder().encode(s);
+  const files=[
+   {name:'[Content_Types].xml',data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+     +'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+     +'<Default Extension="xml" ContentType="application/xml"/>'
+     +'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+     +sheets.map((s,k)=>`<Override PartName="/xl/worksheets/sheet${k+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
+     +'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>')},
+   {name:'_rels/.rels',data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+     +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')},
+   {name:'xl/workbook.xml',data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+     +' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+     +sheets.map((s,k)=>`<sheet name="${lgEsc(s.name)}" sheetId="${k+1}" r:id="rId${k+1}"/>`).join('')
+     +'</sheets><calcPr fullCalcOnLoad="1"/></workbook>')},
+   {name:'xl/_rels/workbook.xml.rels',data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+     +sheets.map((s,k)=>`<Relationship Id="rId${k+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${k+1}.xml"/>`).join('')
+     +`<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`)},
+   {name:'xl/styles.xml',data:enc(lgStylesXml())}];
+  sheets.forEach((s,k)=>files.push({name:`xl/worksheets/sheet${k+1}.xml`,
+    data:enc(lgSheetXml(s.spec,s.freeze||0))}));
+  return zipStore(files);
+}
+
+/* 이 달 대장에 들어갈 사람·숫자 (급여대장_생성_메일발송.build_xlsx 와 같은 기준) */
+function ledgerData(y,m){   // m: 0-based
   const ym=`${y}-${String(m+1).padStart(2,'0')}`;
-  const inMonth=e=>e.joinDate<=`${ym}-31`&&(!e.leaveDate||e.leaveDate>=`${ym}-01`);
-  const regs=DB.employees.filter(e=>e.type==='regular'&&inMonth(e));
-  const frees=DB.employees.filter(e=>e.type==='freelance'&&inMonth(e));
-  const dailys=DB.employees.filter(e=>e.type==='daily'&&inMonth(e));
-  const pad=(cells,n)=>{while(cells.length<n)cells.push(cellS(''));return cells;};
-  const COLS=27;   // 재직일수·일할공제 열 추가
-  let r1=[];
-  r1.push(rowX([cellS(`주식회사 리플래시 — ${y}년 ${m+1}월 급여 관리대장`,'T')]));
-  r1.push(rowX([cellS('※ 정직원(임원+직원): 월급제(209시간) · 통상시급=월급÷209 · 결근 시 근로분(시급×8h)+해당주 주휴 공제 · 조퇴 0.5일 공제 — 리플래시 근태관리 앱 자동생성','G')]));
-  r1.push(rowX([]));
-  r1.push(rowX([cellS('■ 정직원 — 결근·조퇴 공제 계산','S')]));
-  r1.push(rowX(['No','직원명','주민번호','월급여(세전)','통상시급','1주차 결근','1주차 조퇴','2주차 결근','2주차 조퇴','3주차 결근','3주차 조퇴','4주차 결근','4주차 조퇴','5주차 결근','5주차 조퇴','결근일수','조퇴일수','공제일수 합계','결근주수','재직일수','기본급(근로분)','주휴수당','근로분공제','주휴공제','일할공제','총공제액','실수령급여'].map(x=>cellS(x,'H'))));
-  r1.push(rowX(['','','','(원)','(자동)','일수','0.5등','일수','0.5등','일수','0.5등','일수','0.5등','일수','0.5등','(자동)','(자동)','(자동)','(자동)','역일','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)','(자동)'].map(x=>cellS(x,'G'))));
-  let i=1,sSal=0,sNet=0,sDed=0,sBase=0,sJh=0,sPro=0;
-  regs.forEach(e=>{
+  const inM=e=>e.joinDate<=`${ym}-31`&&(!e.leaveDate||e.leaveDate>=`${ym}-01`);
+  const regs=[],frees=[],dailys=[],notes=[],hand=[],warn=[],nosal=[];
+  DB.employees.filter(e=>e.type==='regular'&&inM(e)).forEach(e=>{
     const c=calcRegular(e,y,m), wk=weekDetail(e,y,m);
-    sSal+=e.salary;sNet+=c.net;sDed+=c.total;sBase+=c.base;sJh+=c.jh;sPro+=c.dedPro;
-    const cells=[cellN(i++),cellS(e.name),cellS(e.rrn||''),cellN(e.salary,'N'),cellN(c.wage,'N')];
-    wk.forEach(w=>{cells.push(w.abs?cellN(w.abs):cellS(''));cells.push(w.early?cellN(w.early):cellS(''));});
-    cells.push(cellN(c.absent),cellN(c.early),cellN(c.absent+c.early*0.5),cellN(c.absentW),
-      c.days<c.daysTot?cellS(`${c.days}/${c.daysTot}`):cellS(''),
-      cellN(c.base,'N'),cellN(c.jh,'N'),cellN(c.dedWork,'N'),cellN(c.dedJh,'N'),
-      c.dedPro?cellN(c.dedPro,'N'):cellS(''),cellN(c.total,'N'),cellN(c.net,'NB'));
-    r1.push(rowX(cells));
+    const wkr=(e.schedule&&e.schedule.days&&e.schedule.days.length)||5;
+    regs.push({name:e.name,rrn:e.rrn||'',salary:Math.max(0,Number(e.salary)||0),
+      /* 조퇴는 '0.5등' 단위로 넣는다 — 건수를 넣으면 공제가 2배가 된다 */
+      week:wk.map(w=>[w.abs,w.early*0.5]),jhRatio:Math.round(Math.min(1,wkr/5)*1e4)/1e4,
+      pro:[c.days,c.daysTot],ownFirst:ownsFirstWeek(e,y,m),
+      /* 손으로 고친 행은 월 합계를 그대로 넣는다 — 안 그러면 대장이 앱과 다른 돈을 말한다 */
+      man:(['absent','early','absentW'].some(k=>ov(ym,e.id)[k]!=null)
+        ?[c.absent,c.early*0.5,c.absentW]:null),
+      /* 달력 주가 6개인 달은 주차칸 5개로 결근주수를 표현할 수 없다 → 값으로 */
+      absW:(monthWeekCount(y,m)>5?c.absentW:null)});
+    if(!Number(e.salary))nosal.push(e.name);
+    const o=ov(ym,e.id), ks=['absent','early','absentW'].filter(k=>o[k]!=null);
+    if(ks.length)hand.push(`${e.name}: `+ks.map(k=>`${k}=${o[k]}`).join(', '));
+    if(c.dedPro)hand.push(`${e.name}: 월중 입·퇴사 — 재직 ${c.days}/${c.daysTot}일, `
+      +`일할공제 ${comma(c.dedPro)}원 (월급여 칸은 한 달치, 공제는 총공제액에 포함)`);
+    /* 숫자가 이상하면 조용히 내보내지 않는다 — 회사PC(급여대장_생성_메일발송)와 같은 경고·같은 순서 */
+    const last=new Date(y,m+1,0).getDate();
+    let schedDays=0, backTime=0;
+    for(let dd=1;dd<=last;dd++){
+      const d=new Date(y,m,dd);
+      if(isWorkday(e,d))schedDays++;
+      const r=recOf(fmtD(d),e.id);
+      if(r&&r.in&&r.out&&toMin(r.out)!=null&&toMin(r.in)!=null&&toMin(r.out)<toMin(r.in))backTime++;
+    }
+    const att=(c.agg&&c.agg.attend)||0;
+    if(backTime)warn.push(`${e.name}: 퇴근이 출근보다 이른 기록 ${backTime}건 — 근로시간이 0으로 계산됩니다`);
+    if(c.absent&&schedDays&&c.absent>=Math.max(2,schedDays/4))
+      warn.push(`${e.name}: 결근 ${c.absent}일/${schedDays}근무일 — 기록이 안 올라온 것 아닌지 확인`);
+    if(att===0&&schedDays)warn.push(`${e.name}: 이 달 출근 기록이 하나도 없습니다`);
+    if(schedDays===0)warn.push(`${e.name}: 이 달 근무일이 0일입니다 (입사일·퇴사일을 확인해 주세요)`);
+    if(c.floored)warn.push(`${e.name}: 공제가 월급을 넘어 실수령을 0원으로 막았습니다`);
+    if(c.absent&&schedDays&&c.absent>=schedDays&&c.net>0&&att>0)
+      warn.push(`${e.name}: 전 근무일 결근인데 실수령 ${comma(c.net)}원이 남습니다 `
+        +`(지급은 209시간, 공제는 8시간×일수 기준이라 달마다 어긋납니다 — 세무사무실 확인)`);
   });
-  r1.push(rowX(pad([cellS(''),cellS('정직원 소계','HB'),cellS(''),cellN(sSal,'NB'),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellS(''),cellN(sBase,'NB'),cellN(sJh,'NB'),cellS(''),cellS(''),sPro?cellN(sPro,'NB'):cellS(''),cellN(sDed,'NB'),cellN(sNet,'NB')],COLS)));
-  r1.push(rowX([]));
-  r1.push(rowX([cellS('■ 3.3% 사업소득자 — 용역비 지급','S')]));
-  r1.push(rowX(['No','직원명','주민번호','월 용역비(원)','3% 원천징수','0.3% 원천징수','소득세&지방세 합계','실지급액','비고'].map(x=>cellS(x,'H'))));
-  i=1; let sFee=0,sFnet=0;
-  frees.forEach(e=>{
-    const c=calcFree(e,y,m); sFee+=c.fee;sFnet+=c.net;
-    r1.push(rowX([cellN(i++),cellS(e.name),cellS(e.rrn||''),cellN(c.fee,'N'),cellN(c.t3,'N'),cellN(c.t03,'N'),cellN(c.sum,'N'),cellN(c.net,'NB'),cellS('')]));
+  DB.employees.filter(e=>e.type==='freelance'&&inM(e)).forEach(e=>{
+    const c=calcFree(e,y,m);
+    frees.push({name:e.name,rrn:e.rrn||'',fee:c.fee});
+    if(!c.fee)nosal.push(e.name+'(용역비)');
   });
-  r1.push(rowX([cellS(''),cellS('사업소득 소계','HB'),cellS(''),cellN(sFee,'NB'),cellS(''),cellS(''),cellS(''),cellN(sFnet,'NB')]));
-  r1.push(rowX([]));
-  r1.push(rowX([cellS('■ 일용직 — 시급제 급여 계산 (주5일 개근 시 주휴수당)','S')]));
-  r1.push(rowX(['No','직원명','주민번호','시급(원)','일근로시간(h)','총출근일수','총근로시간','주휴대상주','기본급여','주휴수당','총급여','비고'].map(x=>cellS(x,'H'))));
-  i=1; let sD=0;
-  dailys.forEach(e=>{
-    const c=calcDaily(e,y,m); sD+=c.total;
-    r1.push(rowX([cellN(i++),cellS(e.name),cellS(e.rrn||''),cellN(e.hourly,'N'),cellN(e.dailyH),cellN(c.attend),cellN(+c.hours.toFixed(1)),cellN(c.jhW),cellN(c.base,'N'),cellN(c.jh,'N'),cellN(c.total,'NB'),cellS('')]));
+  DB.employees.filter(e=>e.type==='daily'&&inM(e)).forEach(e=>{
+    dailys.push({name:e.name,rrn:e.rrn||'',hourly:Math.max(0,Number(e.hourly)||0),
+      dailyH:Number(e.dailyH)||8,week:dailyWeekDetail(e,y,m),wkMeta:dailyWeekMeta(e,y,m),
+      hours:calcDaily(e,y,m).hours,
+      jhW:(monthWeekCount(y,m)>5?calcDaily(e,y,m).jhW:null)});
+    if(!Number(e.hourly))nosal.push(e.name+'(일용직 시급)');
   });
-  if(!dailys.length)r1.push(rowX([cellS(''),cellS('해당 없음','G')]));
-  r1.push(rowX([]));
-  r1.push(rowX([cellS('■ 총합계','S')]));
-  r1.push(rowX([cellS('','H'),cellS('정직원 실지급','H'),cellS('3.3% 실지급','H'),cellS('일용직 총급여','H'),cellS('이달 총인건비','H')]));
-  r1.push(rowX([cellS(''),cellN(sNet,'NB'),cellN(sFnet,'NB'),cellN(sD,'NB'),cellN(sNet+sFnet+sD,'NB')]));
-  r1.push(rowX([]));
-  r1.push(rowX([cellS('★ 결근·조퇴는 출퇴근 기록 기준 자동 집계이며, 급여 탭에서 수정한 값이 있으면 합계 열에 반영됩니다.','G')]));
-  let r2=[];
-  r2.push(rowX([cellS(`${y}년 ${m+1}월 근태기록 (출퇴근 원본)`,'T')]));
-  r2.push(rowX(['날짜','요일','직원명','출근','퇴근','근로시간','상태','수동수정'].map(x=>cellS(x,'H'))));
+  const wait=leaveWaiting().length;
+  if(hand.length){ notes.push('✎ 손으로 고치거나 일할계산한 행 — 주차칸 합계와 결근일수가 다를 수 있습니다:');
+    hand.forEach(x=>notes.push('    · '+x)); }
+  if(nosal.length)notes.push('⚠️ 급여 미입력: '+nosal.join(', ')+' — 0원으로 나왔습니다. 그대로 쓰지 마세요.');
+  if(warn.length){ notes.push('⚠️ 확인이 필요한 항목:'); warn.forEach(x=>notes.push('    · '+x)); }
+  if(wait)notes.push(`⚠️ 승인 대기 중인 연차 ${wait}건 — 승인하면 금액이 바뀝니다.`);
+  return {regs:regs,frees:frees,dailys:dailys,notes:notes};
+}
+/* 그 달 1일이 든 주를 **이 달이 갖는가**.
+   걸친 주의 주휴 공제는 '그 주 첫 결근일이 있는 달' 이 한 번만 가져간다(monthAgg 와 같은 규칙).
+   지난달 쪽에 먼저 결근이 있으면 이 달 대장에서는 그 주를 세지 않아야 한다. */
+/* 그 달이 달력 주 몇 개에 걸치나. 6이면 주차칸 5개에 두 주가 합쳐진다. */
+function monthWeekCount(y,m){
+  const last=new Date(y,m+1,0), mons=[];
+  for(let d=new Date(y,m,1);d<=last;d.setDate(d.getDate()+1)){
+    const ms=+weekMon(d); if(mons.indexOf(ms)<0)mons.push(ms);
+  }
+  return mons.length;
+}
+function ownsFirstWeek(e,y,m){
+  const first=new Date(y,m,1), mon=weekMon(first);
+  if(+mon>=+first)return true;              // 그 주가 이 달에서 시작 — 이 달 것이다
+  const today=todayStr();
+  for(let d=new Date(mon);d<first;d.setDate(d.getDate()+1))
+    if(isAbsentOn(e,d,today))return false;  // 지난달에서 이미 공제했다
+  return true;
+}
+/* 일용직 주차칸마다 '주휴로 인정하는 기준 출근일수'. calcDaily 의 규칙을 그대로 옮긴 것:
+     · 그 주를 이 달이 가져야 한다 (그 주 목요일이 있는 달 — ISO)
+     · 그 주 소정근로일이 주 소정근로일수 이상이어야 한다 (공휴일로 줄어든 주는 제외)
+     · 옆 달 쪽 소정근로일은 전부 출근(또는 확정연차)이어야 한다
+   돌려주는 것: [[기준일수, 주수] 또는 null] × 5 */
+function dailyWeekMeta(e,y,m){
+  const first=new Date(y,m,1), last=new Date(y,m+1,0), mons=[];
+  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
+    const ms=+weekMon(d); if(mons.indexOf(ms)<0)mons.push(ms);
+  }
+  const need=(e.schedule&&e.schedule.days&&e.schedule.days.length)||5;
+  const out=[null,null,null,null,null];
+  mons.forEach((ms,wi)=>{
+    const slot=Math.min(wi,4), mon=new Date(ms);
+    let sched=0,sIn=0,sOut=0,aOut=0;
+    for(let k=0;k<7;k++){
+      const d=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+k);
+      if(!isWorkday(e,d))continue; sched++;
+      if(d.getFullYear()===y&&d.getMonth()===m){sIn++;continue;}
+      sOut++;
+      const ds=fmtD(d), r=recOf(ds,e.id);
+      if((r&&r.in)||leaveOn(ds,e.id))aOut++;
+    }
+    if(!weekOwnsMonth(mon,y,m))return;
+    if(!(sched>0&&sched>=need))return;
+    if(sOut!==aOut||sIn<=0)return;
+    const cur=out[slot];
+    out[slot]=cur?[cur[0]+sIn,cur[1]+1]:[sIn,1];   // 6주짜리 달은 마지막 칸에 합쳐진다
+  });
+  return out;
+}
+/* 일용직 주차칸 — [출근일수, 조퇴시간(h)] × 5. 급여대장_생성_메일발송.daily_week_detail 과 같다. */
+function dailyWeekDetail(e,y,m){
+  const last=new Date(y,m+1,0), mons=[];
+  for(let d=new Date(y,m,1);d<=last;d.setDate(d.getDate()+1)){
+    const ms=+weekMon(d); if(mons.indexOf(ms)<0)mons.push(ms);
+  }
+  const out=[[0,0],[0,0],[0,0],[0,0],[0,0]];
+  for(let d=new Date(y,m,1);d<=last;d.setDate(d.getDate()+1)){
+    if(!isWorkday(e,d))continue;
+    const ds=fmtD(d), r=recOf(ds,e.id);
+    if(!(r&&r.in))continue;
+    const s=Math.min(mons.indexOf(+weekMon(d)),4);
+    out[s][0]++;
+    const end=toMin(e.schedule.end), o=toMin(r.out);
+    if(o!=null&&o<end)out[s][1]=Math.round((out[s][1]+(end-o)/60)*10)/10;
+  }
+  return out;
+}
+/* 둘째 장 — 출퇴근 원본. 숫자가 이상할 때 되짚어 볼 수 있어야 한다. */
+function attendSpec(y,m){
+  const cells=[],merges=[],heights={};
+  const W=[11,5,11,8,8,11,14,8];
+  const put=(r,c,v,s)=>cells.push(v==null?{r:r,c:c,s:s}:{r:r,c:c,v:v,s:s});
+  put(1,1,`${y}년 ${m+1}월 근태기록 (출퇴근 원본)`,'title');
+  merges.push([1,1,1,W.length]); heights[1]=25.5;
+  ['날짜','요일','직원명','출근','퇴근','근로시간','상태','수동수정']
+    .forEach((t,i)=>put(2,i+1,t,'head_reg'));
+  heights[2]=28;
+  let r=3;
   const last=new Date(y,m+1,0).getDate();
   for(let dd=1;dd<=last;dd++){
     const d=new Date(y,m,dd), ds=fmtD(d);
     DB.employees.forEach(e=>{
       if(e.joinDate>ds||(e.leaveDate&&e.leaveDate<ds))return;
-      const r=recOf(ds,e.id), st=dayStatus(e,d);
-      if(!r&&st.t==='hol')return;
-      const wm=workedMin(e,r);
-      r2.push(rowX([cellS(ds),cellS(DAYNM[d.getDay()]),cellS(e.name),cellS(r&&r.in?r.in:''),cellS(r&&r.out?r.out:''),cellS(wm?(Math.floor(wm/60)+'h '+(wm%60)+'m'):''),cellS(st.l),cellS(r&&r.manual?'수정':'')]));
+      const rec=recOf(ds,e.id), st=dayStatus(e,d);
+      if(!rec&&st.t==='hol')return;
+      const wm=workedMin(e,rec);
+      [ds,DAYNM[d.getDay()],e.name,(rec&&rec.in)||'',(rec&&rec.out)||'',
+       wm?(Math.floor(wm/60)+'h '+(wm%60)+'m'):'',st.l,(rec&&rec.manual)?'수정':'']
+        .forEach((v,i)=>put(r,i+1,v,'plain'));
+      r++;
     });
   }
-  const styles=`<Styles>
-   <Style ss:ID="Default" ss:Name="Normal"><Font ss:FontName="Malgun Gothic" ss:Size="10"/><Alignment ss:Vertical="Center"/></Style>
-   <Style ss:ID="T"><Font ss:FontName="Malgun Gothic" ss:Size="14" ss:Bold="1" ss:Color="#472F92"/></Style>
-   <Style ss:ID="G"><Font ss:FontName="Malgun Gothic" ss:Size="9" ss:Color="#808080"/></Style>
-   <Style ss:ID="S"><Font ss:FontName="Malgun Gothic" ss:Size="11" ss:Bold="1" ss:Color="#472F92"/></Style>
-   <Style ss:ID="H"><Font ss:FontName="Malgun Gothic" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#472F92" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
-   <Style ss:ID="HB"><Font ss:FontName="Malgun Gothic" ss:Size="10" ss:Bold="1"/><Interior ss:Color="#FFD141" ss:Pattern="Solid"/></Style>
-   <Style ss:ID="N"><NumberFormat ss:Format="#,##0"/></Style>
-   <Style ss:ID="NB"><Font ss:FontName="Malgun Gothic" ss:Size="10" ss:Bold="1"/><NumberFormat ss:Format="#,##0"/><Interior ss:Color="#FFF6DC" ss:Pattern="Solid"/></Style>
-  </Styles>`;
-  const mkSheet=(nm,rows,cols)=>`<Worksheet ss:Name="${nm}"><Table>${cols}${rows.join('')}</Table></Worksheet>`;
-  const cols1='<Column ss:Width="24"/><Column ss:Width="56"/><Column ss:Width="92"/><Column ss:Width="70"/><Column ss:Width="56"/>'+Array(10).fill('<Column ss:Width="40"/>').join('')+Array(4).fill('<Column ss:Width="46"/>').join('')+Array(6).fill('<Column ss:Width="68"/>').join('');
-  const cols2='<Column ss:Width="70"/><Column ss:Width="34"/><Column ss:Width="60"/><Column ss:Width="50"/><Column ss:Width="50"/><Column ss:Width="60"/><Column ss:Width="60"/><Column ss:Width="50"/>';
-  return `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${styles}${mkSheet('급여대장',r1,cols1)}${mkSheet('근태기록',r2,cols2)}</Workbook>`;
+  return {cells:cells,merges:merges,widths:W,heights:heights,rows:r};
 }
 function exportExcel(){
-  const y=payDate.getFullYear(),m=payDate.getMonth();
-  const xml=buildLedgerXML(y,m);
-  const blob=new Blob(['﻿'+xml],{type:'application/vnd.ms-excel'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`${y}_${String(m+1).padStart(2,'0')}_리플래시_급여_관리대장.xls`;
-  a.click(); URL.revokeObjectURL(a.href);
-  toast('엑셀 파일이 다운로드되었습니다');
+  const y=payDate.getFullYear(), m=payDate.getMonth();
+  try{
+    const d=ledgerData(y,m);
+    const buf=buildXlsx([
+      {name:`${m+1}월`,spec:buildLedgerSpec(y,m+1,d.regs,d.frees,d.dailys,d.notes),freeze:6},
+      {name:'근태기록',spec:attendSpec(y,m),freeze:2}]);
+    const blob=new Blob([buf],
+      {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`${y}_${String(m+1).padStart(2,'0')}_리플래시_급여_관리대장.xlsx`;
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('엑셀 파일이 다운로드되었습니다');
+  }catch(err){
+    console.error(err);
+    toast('엑셀을 만들지 못했습니다: '+((err&&err.message)||err));
+  }
 }
 
 /* ================== 설정 ================== */
