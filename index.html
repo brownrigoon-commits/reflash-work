@@ -722,7 +722,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261109_141352'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261109_141726'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -4358,6 +4358,35 @@ function pushWho(){ // 이 기기가 누구 것인지 (직원이면 본인 id, �
 }
 function pushOn(){ return !!(DB.settings&&DB.settings.pushSub); }
 // ※ 구독 정보에는 실명을 올리지 않는다(클라우드가 무인증 공개 구간). 직원 id만 두고 이름은 각 기기에서 찾는다.
+/* 폰 설정 화면은 앱이 직접 열 수 없다 — 브라우저가 막아 두었다.
+   그래서 전에 거부한 사람에게는 **기기에 맞는 길**을 짚어 준다.
+   (예전에는 잠깐 떴다 사라지는 토스트에 '설정 → 알림' 한 줄뿐이라 찾을 수 없었다) */
+function pushHowTo(){
+  const ua=navigator.userAgent||'';
+  const android=/Android/i.test(ua), samsung=/SamsungBrowser/i.test(ua);
+  let s;
+  if(isIOS())
+    s='【아이폰】\n1) 홈 화면에서 [설정] 앱을 엽니다\n2) 아래로 내려 [알림] 을 누릅니다\n'
+     +'3) 목록에서 [Ri-work] 를 찾아 누릅니다\n4) [알림 허용] 을 켭니다\n'
+     +'5) Ri-work 로 돌아와 [켜기] 를 다시 누릅니다';
+  else if(samsung)
+    s='【삼성 인터넷】\n1) 오른쪽 아래 ☰ → [설정]\n2) [사이트 및 다운로드] → [사이트 권한] → [알림]\n'
+     +'3) 목록에서 이 사이트를 [허용] 으로 바꿉니다\n4) 돌아와 [켜기] 를 다시 누릅니다';
+  else if(android&&isStandalone())
+    s='【안드로이드 — 홈 화면 아이콘으로 연 경우】\n1) 홈 화면의 Ri-work 아이콘을 **길게** 누릅니다\n'
+     +'2) [앱 정보] 또는 ⓘ 를 누릅니다\n3) [알림] → [알림 표시] 를 켭니다\n'
+     +'4) Ri-work 로 돌아와 [켜기] 를 다시 누릅니다';
+  else if(android)
+    s='【안드로이드 크롬】\n1) 주소창 왼쪽 자물쇠(또는 ⓘ)를 누릅니다\n'
+     +'2) [권한] 또는 [사이트 설정] 을 누릅니다\n3) [알림] 을 [허용] 으로 바꿉니다\n'
+     +'4) 돌아와 [켜기] 를 다시 누릅니다';
+  else
+    s='【컴퓨터 크롬·엣지】\n1) 주소창 왼쪽 자물쇠를 누릅니다\n2) [알림] 을 [허용] 으로 바꿉니다\n'
+     +'3) 새로고침한 뒤 [켜기] 를 다시 누릅니다';
+  alert('폰 알림이 전에 거부되어 있습니다.\n\n'
+    +'앱이 설정 화면을 직접 열 수는 없습니다 — 브라우저가 막아 둔 부분이라\n'
+    +'아래 길로 한 번만 켜 주시면 그다음부터는 손댈 것이 없습니다.\n\n'+s);
+}
 async function pushEnable(){
   if(!pushSupported()){ toast('이 브라우저는 폰 알림을 지원하지 않습니다'); return false; }
   if(isIOS()&&!isStandalone()){
@@ -4367,8 +4396,14 @@ async function pushEnable(){
   try{
     const reg=await navigator.serviceWorker.register('sw.js');
     await navigator.serviceWorker.ready;
+    /* 이미 거부된 상태면 시스템 창이 다시 뜨지 않는다 — 묻지 말고 바로 길을 알려 준다 */
+    if(Notification.permission==='denied'){ pushHowTo(); renderPushUI(); return false; }
     const perm=await Notification.requestPermission();
-    if(perm!=='granted'){ toast('알림이 거부되었습니다. 설정 → 알림에서 Ri-work를 허용해 주세요'); renderPushUI(); return false; }
+    if(perm!=='granted'){
+      if(Notification.permission==='denied')pushHowTo();
+      else toast('알림을 허용하셔야 받을 수 있어요. [켜기] 를 다시 눌러 주세요');
+      renderPushUI(); return false;
+    }
     let sub=await reg.pushManager.getSubscription();
     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
     const who=pushWho(), j=sub.toJSON();
@@ -4412,10 +4447,15 @@ function renderPushUI(){
   const bar=document.getElementById('pushBar');
   if(bar){
     if(on||!pushSupported()||DB.settings.pushHide){ bar.innerHTML=''; }
-    else bar.innerHTML=`<div class="card" style="background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    else{
+      /* 전에 거부해 둔 기기는 [켜기] 를 눌러도 시스템 창이 뜨지 않는다 —
+         그 사실과 가는 길을 띠에서부터 말해 준다 */
+      const no=!!(window.Notification&&Notification.permission==='denied');
+      bar.innerHTML=`<div class="card" style="background:var(--yellow-soft);border:1.5px solid var(--yellow);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
       <div style="min-width:0;"><div style="font-weight:800;">🔔 폰 알림을 켜 주세요</div>
-      <div class="muted" style="font-size:12px;margin-top:2px;">퇴근 찍는 걸 깜빡하지 않게 알려 드려요. 앱 설치는 필요 없습니다.</div></div>
-      <button class="btn p" style="padding:9px 13px;white-space:nowrap;flex-shrink:0;" onclick="pushEnable()">켜기</button></div>`;
+      <div class="muted" style="font-size:12px;margin-top:2px;">${no?'전에 거부하셔서 이 화면에서는 켜지지 않습니다 — 폰 설정에서 한 번만 켜 주세요.':'퇴근 찍는 걸 깜빡하지 않게 알려 드려요. 앱 설치는 필요 없습니다.'}</div></div>
+      <button class="btn p" style="padding:9px 13px;white-space:nowrap;flex-shrink:0;" onclick="${no?'pushHowTo()':'pushEnable()'}">${no?'켜는 법':'켜기'}</button></div>`;
+    }
   }
   const card=document.getElementById('pushCard');
   if(card){
