@@ -343,6 +343,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <button onclick="leaveMove(1)">›</button>
     </div>
     <button class="btn p wide" id="btnLeaveReq" onclick="openLvReq()">🌴 연차 · 반차 신청하기</button>
+    <button class="btn y wide" id="btnReqMore" style="margin-top:8px;" onclick="openReqPick()">✋ 그 밖의 신청 (야근 · 조퇴 · 늦은 출근 · 외출)</button>
     <button class="btn y wide" id="btnLeaveAdd" style="margin-top:8px;" onclick="openLeaveForm()">＋ 연차 · 반차 등록 (관리자)</button>
     <div id="leaveWaitBox" style="margin-top:14px;"></div>
     <div id="leaveBody" style="margin-top:14px;"></div>
@@ -650,6 +651,37 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   </div>
 </div></div>
 
+<!-- 그 밖의 신청 — 무엇을 신청할지 고르기 (직원 본인) -->
+<div class="modal-bg" id="mdReqPick"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdReqPick')">‹</button>
+  <h3>✋ 무엇을 신청하시나요?</h3>
+  <div class="muted">고르면 다음 화면에서 날짜와 시각을 넣습니다. 관리자가 확인하면 승인됩니다.</div>
+  <div id="reqPickBox" style="margin-top:14px;"></div>
+  <button class="btn ghost wide" style="margin-top:12px;" onclick="closeM('mdReqPick')">닫기</button>
+</div></div>
+
+<!-- 그 밖의 신청 — 내용 넣기 (직원 본인) -->
+<div class="modal-bg" id="mdReq"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdReq')">‹</button>
+  <h3 id="rqTitle">신청</h3>
+  <div class="muted" id="rqSub"></div>
+  <label class="f">날짜</label>
+  <input type="date" id="rqDate" onchange="rqCalc()">
+  <div class="muted" id="rqWarn" style="display:none;color:#C0392B;font-size:12px;margin-top:4px;"></div>
+  <div id="rqT1Box"><label class="f" id="rqT1Lab">시각</label>
+    <input type="time" id="rqT1" onchange="rqCalc()"></div>
+  <div id="rqT2Box" style="display:none;"><label class="f">돌아오는 시각</label>
+    <input type="time" id="rqT2" onchange="rqCalc()"></div>
+  <label class="f">사유 (선택)</label>
+  <input type="text" id="rqMemo" placeholder="예: 병원 진료" maxlength="60">
+  <div id="rqCalcBox" style="margin-top:10px;font-weight:800;text-align:center;"></div>
+  <div class="muted" id="rqNote" style="margin-top:8px;"></div>
+  <div class="row" style="margin-top:16px;">
+    <button class="btn p" style="flex:1;" onclick="saveReq()">신청하기</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdReq')">닫기</button>
+  </div>
+</div></div>
+
 <!-- 야근 입력 (직원 본인) -->
 <div class="modal-bg" id="mdOtRpt"><div class="modal">
   <button class="modal-back" onclick="closeM('mdOtRpt')">‹</button>
@@ -690,7 +722,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261109_103839'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261109_141352'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -1090,6 +1122,23 @@ function isHoliday(ds){ return !!holName(ds); }
 function holYearKnown(y){ return HOL_YEARS.includes(String(y)); }
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
+/* 연차 제도 시행일 — 이 날부터 발생을 센다.
+   회사가 2026년 11월에 연차를 시작했다. 그 전 기간은 세지 않는다(대표 결정 2026-11-09).
+   바꾸려면 이 한 줄만 고치고 다시 배포하면 된다.
+   '발생'은 급여 계산에 쓰이지 않는다(쓰는 것은 '사용' 뿐) — 그래서 앱에만 있으면 된다. */
+const LV_START='2026-11-01';
+/* 연차 말고도 직원이 알려야 하는 상황들. 같은 서랍(leaves.items)에 k 꼬리표를 달아 담는다.
+   **k 가 있으면 연차가 아니다** — leaveLive() 가 걸러내므로 급여·결근 계산에 들어가지 않는다.
+   그 대신 연차의 다져진 장치(동기화·재전송·충돌해결·승인·알림)를 그대로 쓴다. */
+const REQ_NM={early:'조퇴 (일찍 퇴근)',late:'늦은 출근',out:'외출',hol:'휴일근무',etc:'기타'};
+const REQ_ICO={early:'🏃',late:'🕐',out:'🚶',hol:'🎌',etc:'✋'};
+const REQ_T1={early:'퇴근할 시각',late:'출근할 시각',out:'나가는 시각',hol:'출근 시각',etc:''};
+function lvName(x){ return (x&&x.k)?(REQ_NM[x.k]||'신청'):(LEAVE_NM[(x||{}).t]||''); }
+function lvWhen(x){
+  if(!x||!x.k)return '';
+  if(x.k==='out'&&x.t1&&x.t2)return ` ${x.t1}~${x.t2}`;
+  return x.t1?` ${x.t1}`:'';
+}
 function leavesDB(){ DB.leaves=DB.leaves||{}; DB.leaves.grants=DB.leaves.grants||{}; DB.leaves.items=DB.leaves.items||{}; return DB.leaves; }
 /* 클라우드에서 온 '열쇠(id)'는 기계가 만든 모양만 통과시킨다.
    방에 쓸 수 있는 사람이 id 를 "e1'); 코드 ; ('" 처럼 만들면
@@ -1165,7 +1214,10 @@ function safeLunchCfg(c){
 function esc(s){ // 클라우드에서 온 글자(사유·이름 등)를 화면에 넣을 때 반드시 거친다
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function leaveLive(x){ return !!(x&&!x.del&&!x.st); }   // 확정된 연차만 (st: 'w'=대기 'x'=반려)
+/* 확정된 **연차**만. k 가 붙은 것(조퇴·외출 등)은 연차가 아니므로 여기서 막는다.
+   leaveOn·monthAgg·calcDaily·isAbsentOn·도시락 집계가 모두 이 함수를 지난다 —
+   그래서 이 한 줄이 '신청이 급여를 건드리지 않는다'를 보장한다. */
+function leaveLive(x){ return !!(x&&!x.del&&!x.st&&!x.k); }   // st: 'w'=대기 'x'=반려
 function leaveOn(ds,empId){ // 그날 확정된 연차 — 없으면 null
   const it=leavesDB().items, hit=[];
   for(const k in it){ const x=it[k]; if(leaveLive(x)&&x.e===empId&&x.d===ds)hit.push(x); }
@@ -1174,9 +1226,9 @@ function leaveOn(ds,empId){ // 그날 확정된 연차 — 없으면 null
   if(hit.length>1&&hit.reduce((s,x)=>s+leaveDays(x),0)>=1)return {e:empId,d:ds,t:'full',memo:'반차 2건 합산'};
   return hit[0];
 }
-function leaveAnyOn(ds,empId){ // 대기 중인 신청까지 포함해 찾기 (중복 신청 방지용)
+function leaveAnyOn(ds,empId){ // 대기 중인 연차까지 포함해 찾기 (중복 신청 방지용)
   const it=leavesDB().items;
-  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.st!=='x'&&x.e===empId&&x.d===ds)return x; }
+  for(const k in it){ const x=it[k]; if(x&&!x.del&&!x.k&&x.st!=='x'&&x.e===empId&&x.d===ds)return x; }
   return null;
 }
 function leaveSendErr(empId){ // 서버에 올라가지 못한 신청 — 화면에서 사라지면 안 된다
@@ -1186,7 +1238,7 @@ function leaveSendErr(empId){ // 서버에 올라가지 못한 신청 — 화면
 }
 function leaveDayAny(ds,empId){ // 그날 연차 신청이 있었나 (확정·대기·반려 전부)
   const it=leavesDB().items;
-  for(const k in it){ const x=it[k]; if(x&&!x.del&&x.e===empId&&x.d===ds)return x; }
+  for(const k in it){ const x=it[k]; if(x&&!x.del&&!x.k&&x.e===empId&&x.d===ds)return x; }
   return null;
 }
 function leaveWaiting(empId){ // 승인 대기 목록
@@ -1194,7 +1246,7 @@ function leaveWaiting(empId){ // 승인 대기 목록
     .filter(([id,x])=>x&&!x.del&&x.st==='w'&&(!empId||x.e===empId))
     .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
 }
-function leaveDays(x){ return x.t==='full'?1:0.5; }
+function leaveDays(x){ return (x&&x.k)?0:(x&&x.t==='full'?1:0.5); }   // 신청(k)은 연차를 깎지 않는다
 function dayStatus(e,d){ // {tag, label}
   const ds=fmtD(d), r=recOf(ds,e.id), today=todayStr();
   if(!isWorkday(e,d)){
@@ -2294,8 +2346,12 @@ let leaveYear=new Date().getFullYear();
 function leaveMove(d){ leaveYear+=d; renderLeave(); }
 function legalLeave(e,Y){
   if(e.type!=='regular'||!e.joinDate)return 0;           // 3.3%·일용직은 기본 0 (필요하면 직접 입력)
-  const j=new Date(e.joinDate+'T00:00:00'), jan1=new Date(Y,0,1), dec31=new Date(Y,11,31);
-  const t=new Date(); t.setHours(0,0,0,0);
+  /* 시행일 이전은 세지 않는다 — 시행일에 입사한 것처럼 본다 (LV_START 설명 참고) */
+  const jd=e.joinDate>LV_START?e.joinDate:LV_START;
+  const j=new Date(jd+'T00:00:00'), jan1=new Date(Y,0,1), dec31=new Date(Y,11,31);
+  /* '오늘'은 앱 전체가 쓰는 todayStr() 로 본다. 예전에는 여기만 기기 시계를 직접 봐서
+     다른 계산과 기준이 달랐고, 시험으로 확인할 수도 없었다. */
+  const t=new Date(todayStr()+'T00:00:00');
   const until=(Y===t.getFullYear())?t:dec31;             // 올해는 오늘까지 생긴 것만 (월차는 한 달을 채운 다음 날 생김)
   if(j>until)return 0;
   const monthsDone=(from,to)=>{ let k=0; while(k<11&&new Date(from.getFullYear(),from.getMonth()+k+1,from.getDate())<=to)k++; return k; };
@@ -2319,6 +2375,7 @@ function leaveEmps(Y){ return DB.employees.filter(e=>e.joinDate<=`${Y}-12-31`&&(
 function renderLeave(){
   if(isStaffDev()){ renderLeaveMine(); return; }     // 직원 화면 — 본인 것만
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display=canManage()?'block':'none';
+  const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
   renderLeaveWait();
   const Y=leaveYear, can=canManage();
   document.getElementById('leaveLabel').textContent=`${Y}년 연차`;
@@ -2338,7 +2395,8 @@ function renderLeave(){
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${u}일</b></span><span>잔여 <b style="font-size:16px;color:${left<0?'var(--red)':'var(--purple)'};">${left}일</b></span></div>
       <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div></div>`;
   });
-  h+=`<div class="muted" style="margin-top:10px;">발생 일수는 근로기준법 기준으로 <b>오늘까지 생긴 날수</b>를 자동 계산한 추정치입니다(회계연도 1~12월 기준). 입사 첫해에는 한 달을 개근할 때마다 그다음 날 1일씩 생기고(최대 11일), 결근한 달은 생기지 않으니 숫자를 직접 줄여 주세요. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
+  h+=`<div class="muted" style="margin-top:10px;"><b>연차 시행일은 2026년 11월 1일</b>입니다 — 그 전 기간은 세지 않고, 모두 시행일에 입사한 것처럼 계산합니다(바꾸려면 코드의 LV_START).<br>
+    발생 일수는 근로기준법 기준으로 <b>오늘까지 생긴 날수</b>를 자동 계산한 추정치입니다(회계연도 1~12월 기준). 입사 첫해에는 한 달을 개근할 때마다 그다음 날 1일씩 생기고(최대 11일), 결근한 달은 생기지 않으니 숫자를 직접 줄여 주세요. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
   const items=leaveItemsOf(Y);
   h+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
   if(!items.length)h+='<div class="muted">아직 등록된 연차가 없습니다. 위의 [＋ 연차 · 반차 등록]을 눌러 추가하세요.</div>';
@@ -2494,7 +2552,10 @@ function leaveMergeCloud(cl){
   const L=leavesDB(), cg=(cl&&cl.grants)||{}, upI={}, upG={};
   // id·직원id·날짜가 기계가 만든 모양이 아닌 항목은 받지 않는다 (onclick 자리를 노린 공격 차단)
   const ci={}; Object.entries((cl&&cl.items)||{}).forEach(([id,x])=>{
-    if(safeId(id)&&x&&safeId(x.e)&&safeDate(x.d))ci[id]=x;
+    if(!(safeId(id)&&x&&safeId(x.e)&&safeDate(x.d)))return;
+    if(x.k!=null&&!REQ_NM[x.k])delete x.k;                       // 모르는 신청 종류는 떼어 낸다
+    ['t1','t2'].forEach(f=>{ if(x[f]!=null&&!safeHM(x[f]))delete x[f]; });
+    ci[id]=x;
   });
   /* 예전에는 클라우드가 항상 이겼다. 그래서
        · 관리자가 승인을 누르면 25초 뒤 '승인 대기'로 되돌아가고 서버도 대기로 덮였다
@@ -3624,9 +3685,10 @@ function evText(ev){
   if(ev.k==='lv')return `${ev.n}님이 연차를 신청했습니다 — ${ev.t}`;
   if(ev.k==='ot')return `${ev.n}님이 야근을 입력했습니다 — ${ev.t}`;
   if(ev.k==='rp')return `${ev.n}님이 지각 정정을 신고했습니다 — ${ev.t}`;
+  if(ev.k==='rq')return `${ev.n}님이 신청을 올렸습니다 — ${ev.t}`;
   return `${ev.n}님 — ${ev.t}`;
 }
-function evNeedsOk(ev){ return ev.k==='lv'||ev.k==='ot'||ev.k==='rp'; }   // 관리자 확인이 필요한 것
+function evNeedsOk(ev){ return ev.k==='lv'||ev.k==='ot'||ev.k==='rp'||ev.k==='rq'; }   // 관리자 확인이 필요한 것
 /* 직원이 한 일을 **바로** 알린다.
    ① /events 에 남긴다  → 관리자 앱이 열려 있으면 즉시 화면 알림
    ② ntfy 로 보낸다     → ntfy 앱을 쓰는 관리자에게 즉시
@@ -3746,8 +3808,9 @@ function handleEvents(events){
    반려는 st:'x'. 대기·반려 건은 연차 사용일수에 들어가지 않는다. */
 function isStaffDev(){ const c=cloudCfg(); return !!(c&&c.role==='staff'); }
 function myEmpId(){ const c=cloudCfg(); return (c&&c.role==='staff'&&c.myEmpId)?c.myEmpId:null; }
-function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (동료 정보 비노출)
+function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 준다 (동료 정보 비노출)
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display='none';
+  const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
   const Y=leaveYear, id=myEmpId(), e=id?emp(id):null;
   document.getElementById('leaveLabel').textContent=`${Y}년 내 연차`;
   const box=document.getElementById('leaveWaitBox'); if(box)box.innerHTML='';
@@ -3761,7 +3824,8 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (�
     <div><span>잔여</span><b style="color:${left<0?'var(--red)':'var(--purple)'};">${num1(left)}일</b></div></div>
     <div class="card"><div style="font-weight:800;margin-bottom:6px;">${esc(e.name)}님 연차</div>
     <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div>
-    <div class="muted" style="margin-top:8px;font-size:12.5px;">발생 일수는 근로기준법 기준 추정치입니다. 실제와 다르면 관리자에게 말씀해 주세요.</div></div>`;
+    <div class="muted" style="margin-top:8px;font-size:12.5px;">연차는 <b>2026년 11월 1일부터</b> 시행합니다 — 그 전 기간은 세지 않습니다.<br>
+    한 달을 개근하면 그다음 날 1일씩 생기고, 1년이 지나면 해마다 15일이 생깁니다. 실제와 다르면 관리자에게 말씀해 주세요.</div></div>`;
 
   const wait=leaveWaiting(id);
   if(wait.length){
@@ -3769,10 +3833,10 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (�
       <div style="font-weight:800;margin-bottom:6px;">⏳ 승인 대기 ${wait.length}건</div>`;
     wait.forEach(x=>{
       s+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
-        <div>${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
+        <div>${x.d.slice(5).replace('-','.')} ${esc(lvName(x)+lvWhen(x))}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
         <span class="tag ${lvPending(x.id)?'hol':'man'}" style="flex-shrink:0;">${lvPending(x.id)?'전송 중':'대기'}</span></div>`;
     });
-    s+='<div class="muted" style="margin-top:8px;font-size:12px;">관리자가 승인하면 확정됩니다. 승인 전까지는 그날이 결근으로 잡히니, 급하면 관리자에게 알려 주세요.</div></div>';
+    s+='<div class="muted" style="margin-top:8px;font-size:12px;">관리자가 승인하면 확정됩니다. <b>연차·반차</b>는 승인 전까지 그날이 결근으로 잡히니, 급하면 관리자에게 알려 주세요.</div></div>';
   }
 
   const serr=leaveSendErr(id);
@@ -3781,7 +3845,7 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (�
       <div style="font-weight:800;margin-bottom:6px;color:#A32020;">⚠️ 서버에 전달되지 못한 신청 ${serr.length}건</div>`;
     serr.forEach(x=>{
       s+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
-        <div>${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
+        <div>${x.d.slice(5).replace('-','.')} ${esc(lvName(x)+lvWhen(x))}${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
         <span class="tag abs" style="flex-shrink:0;">전송 실패</span></div>`;
     });
     s+='<div class="muted" style="margin-top:8px;font-size:12px;">이 신청은 관리자에게 전달되지 않았습니다. 같은 날로 다시 신청하시거나, 관리자에게 직접 말씀해 주세요.</div></div>';
@@ -3795,7 +3859,127 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차만 보여 준다 (�
     s+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b>
       <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div></div>`;
   });
+  s+='</div>';
+
+  /* 연차 말고 올린 신청 — 처리 상태까지 보여 준다 (대기 / 승인 / 반려) */
+  const rqs=Object.entries(leavesDB().items)
+    .filter(a=>a[1]&&!a[1].del&&a[1].k&&a[1].e===id&&String(a[1].d).slice(0,4)===String(Y))
+    .map(a=>Object.assign({id:a[0]},a[1])).sort((a,b)=>a.d<b.d?1:-1);
+  s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">그 밖의 신청 <span style="color:var(--purple);">${rqs.length}건</span></div>`;
+  if(!rqs.length)s+='<div class="muted">야근 · 조퇴 · 늦은 출근 · 외출 · 휴일근무는 위 [✋ 그 밖의 신청] 으로 올려 주세요.</div>';
+  rqs.forEach(x=>{
+    const d=new Date(x.d+'T00:00:00');
+    const st=x.st==='w'?['man','대기']:x.st==='x'?['abs','반려']:['ok','승인'];
+    s+=`<div class="ot-log"><div><b>${x.d.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})</b>
+      <span class="tag leave">${esc(lvName(x))}</span>${x.t1?`<b style="margin-left:5px;">${esc(lvWhen(x).trim())}</b>`:''}
+      ${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}
+      ${x.half?'<div class="muted" style="margin-top:3px;">반차로 처리되었습니다</div>':''}</div>
+      <span class="tag ${st[0]}" style="flex-shrink:0;">${st[1]}</span></div>`;
+  });
   document.getElementById('leaveBody').innerHTML=s+'</div>';
+}
+/* ── 그 밖의 신청 (야근·조퇴·늦은 출근·외출·휴일근무·기타) ──
+   연차와 같은 서랍에 k 꼬리표를 달아 담는다. 급여에는 들어가지 않는다(leaveLive 참고). */
+function openReqPick(){
+  if(!myEmpId()){ toast('본인 확인이 안 됩니다. 받으신 초대 링크로 다시 입장해 주세요'); return; }
+  const items=[['ot','🌙','야근 (연장근로)','퇴근시간 뒤에 더 일했어요'],
+    ['early','🏃','조퇴 (일찍 퇴근)','퇴근시간보다 먼저 나가요'],
+    ['late','🕐','늦은 출근','출근시간보다 늦게 와요 (오후 출근 포함)'],
+    ['out','🚶','외출','근무 중에 잠깐 나갔다 와요'],
+    ['hol','🎌','휴일근무','쉬는 날에 나와서 일해요'],
+    ['etc','✋','기타','위에 없는 상황이에요']];
+  document.getElementById('reqPickBox').innerHTML=items.map(a=>
+    `<button class="btn ghost wide" style="margin-top:8px;text-align:left;padding:12px 14px;" onclick="reqPick('${a[0]}')">
+      <span style="font-size:17px;">${a[1]}</span> <b style="margin-left:6px;">${a[2]}</b>
+      <div class="muted" style="font-size:12px;margin-top:3px;margin-left:28px;font-weight:400;">${a[3]}</div></button>`).join('');
+  openM('mdReqPick');
+}
+function reqPick(k){ closeM('mdReqPick'); if(k==='ot'){ otFromReq(); return; } reqOpen(k); }
+/* 야근은 '그날의 출퇴근 기록'에 붙는다(기존 경로 그대로). 기록이 있는 날만 열 수 있다.
+   같은 야근을 두 군데에 적으면 급여 야근 시간이 어느 쪽인지 알 수 없게 된다. */
+function otFromReq(){
+  const id=myEmpId(); if(!id)return;
+  const y=new Date(); y.setDate(y.getDate()-1);
+  for(const ds of [todayStr(),fmtD(y)]){
+    const r=recOf(ds,id);
+    if(r&&r.in){ otRptOpen(id,ds); return; }
+  }
+  toast('오늘·어제 출근 기록이 없습니다. 출근을 찍은 날에 야근을 입력해 주세요');
+}
+function reqOpen(k){
+  const id=myEmpId(), e=id?emp(id):null;
+  if(!e){ toast('본인 확인이 안 됩니다'); return; }
+  window._rqK=k; window._rqEmp=id;
+  document.getElementById('rqTitle').textContent=`${REQ_ICO[k]||'✋'} ${REQ_NM[k]} 신청`;
+  document.getElementById('rqSub').textContent=`${e.name}님`;
+  document.getElementById('rqT1Box').style.display=(k==='etc')?'none':'';
+  document.getElementById('rqT2Box').style.display=(k==='out')?'':'none';
+  document.getElementById('rqT1Lab').textContent=REQ_T1[k]||'시각';
+  const d=document.getElementById('rqDate'); d.value=todayStr(); d.min=monthFloor();
+  document.getElementById('rqT1').value=''; document.getElementById('rqT2').value='';
+  document.getElementById('rqMemo').value='';
+  document.getElementById('rqNote').textContent=
+    k==='early'?'승인해도 조퇴 공제(0.5일)는 그대로입니다. 연차에서 쓰시려면 [오후 반차]로 신청해 주세요.'
+   :k==='late'?'지각은 급여에서 깎이지 않습니다. 연차에서 쓰시려면 [오전 반차]로 신청해 주세요.'
+   :k==='hol'?'쉬는 날 출근은 출퇴근을 찍으면 기록에 남습니다. 이 신청은 미리 알리는 용도입니다.'
+   :'관리자가 확인하면 승인됩니다. 급여에서 깎이는 것은 없습니다.';
+  rqCalc(); openM('mdReq');
+}
+function rqCalc(){
+  const k=window._rqK, ds=document.getElementById('rqDate').value;
+  const w=document.getElementById('rqWarn');
+  const msg=(ds&&ds<monthFloor())?'이번 달 날짜부터 신청할 수 있습니다. 더 지난 날은 관리자에게 말씀해 주세요.':'';
+  w.textContent=msg; w.style.display=msg?'':'none';
+  const t1=document.getElementById('rqT1').value, t2=document.getElementById('rqT2').value;
+  let s='';
+  if(ds){
+    const d=new Date(ds+'T00:00:00');
+    s=`${ds.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})`;
+    if(k==='out'&&t1&&t2)s+=` ${t1} ~ ${t2}`; else if(t1)s+=` ${t1}`;
+  }
+  document.getElementById('rqCalcBox').textContent=s;
+}
+function saveReq(){
+  const k=window._rqK, id=window._rqEmp, e=id?emp(id):null;
+  if(!e||!REQ_NM[k]){ toast('본인 확인이 안 됩니다'); return; }
+  if(isStaffDev()&&id!==myEmpId()){ toast('본인 것만 신청할 수 있습니다'); return; }
+  const ds=document.getElementById('rqDate').value;
+  if(!safeDate(ds)){ toast('날짜를 골라 주세요'); return; }
+  if(ds<monthFloor()){ toast('이번 달 날짜부터 신청할 수 있습니다. 더 지난 날은 관리자에게 말씀해 주세요'); return; }
+  const t1=document.getElementById('rqT1').value, t2=document.getElementById('rqT2').value;
+  if(k!=='etc'&&!safeHM(t1)){ toast(`${REQ_T1[k]||'시각'}을 넣어 주세요`); return; }
+  if(k==='out'&&!safeHM(t2)){ toast('돌아오는 시각을 넣어 주세요'); return; }
+  if(k==='out'&&t2<=t1){ toast('돌아오는 시각이 나가는 시각보다 빠릅니다'); return; }
+  const memo=document.getElementById('rqMemo').value.trim();
+  const it=leavesDB().items;
+  for(const q in it){ const x=it[q];
+    if(x&&!x.del&&x.st!=='x'&&x.e===id&&x.d===ds&&x.k===k){ toast('그날 같은 신청이 이미 있습니다'); return; } }
+  const rid='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const o={e:id,d:ds,k:k,memo:memo,ts:Date.now(),st:'w'};
+  if(k!=='etc')o.t1=t1;
+  if(k==='out')o.t2=t2;
+  it[rid]=o; save(); queueLeave(rid,true);      // 실패해도 자동 재전송 — 조용히 사라지지 않는다
+  closeM('mdReq'); leaveYear=+ds.slice(0,4); renderLeave();
+  pushEvent('rq',id,`${REQ_NM[k]} — ${ds.slice(5).replace('-','.')}${o.t1?' '+o.t1:''}${(k==='out'&&o.t2)?'~'+o.t2:''}`);
+  toast(`${REQ_NM[k]} 신청했습니다 — 관리자 확인 후 승인됩니다`);
+}
+/* 조퇴·늦은 출근 신청을 '반차'로 돌린다 (관리자).
+   조퇴 → 오후 반차: 그날 조퇴 판정이 면제되고 연차 0.5일 차감
+   늦은 출근 → 오전 반차: 지각 판정이 면제된다
+   둘 다 이미 검증된 연차 경로를 그대로 탄다 — 새로 계산하는 것이 없다. */
+function lvToHalf(id){
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
+  const x=leavesDB().items[id]; if(!x||!(x.k==='early'||x.k==='late'))return;
+  const nm=(emp(x.e)||{}).name||'', t=(x.k==='early'?'pm':'am');
+  const dup=leaveOn(x.d,x.e);
+  if(dup){ toast(`${nm}님 ${x.d}은 이미 ${LEAVE_NM[dup.t]}로 확정되어 있습니다`); return; }
+  if(!confirm(`${nm}님 ${x.d} ${REQ_NM[x.k]} 신청을 ${LEAVE_NM[t]}로 처리할까요?\n\n`
+    +`연차 ${0.5}일이 차감되고, 그날 ${x.k==='early'?'조퇴':'지각'} 표시가 사라집니다.`))return;
+  delete x.st; x.half=1; x.ts=Date.now(); queueLeave(id);   // 신청은 '승인'으로 닫고 기록은 남긴다
+  const nid='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  leavesDB().items[nid]={e:x.e,d:x.d,t:t,memo:`${REQ_NM[x.k]} 신청 → ${LEAVE_NM[t]}`,ts:Date.now()};
+  save(); queueLeave(nid,true); renderLeave();
+  toast(`${nm}님 ${x.d} ${LEAVE_NM[t]}로 처리했습니다`);
 }
 function openLvReq(){
   const sel=myEmpId();
@@ -3878,15 +4062,16 @@ function lvApprove(id){
   // 서버가 이 항목을 거부한 상태면, 또 눌러도 서버에는 안 올라간다. 그 사실을 바로 말해 준다.
   // (예전에는 '승인했습니다' 토스트만 떠서 왜 계속 대기로 돌아오는지 알 수 없었다)
   if(x.sendErr){ toast('이 항목은 서버가 거부했습니다 — 화면 위 빨간 띠의 [다시 보내기]를 눌러 주세요'); return; }
-  // 그 날에 이미 확정된 연차가 있으면 승인하지 않는다 — 승인하면 연차가 두 번 차감된다
-  const dup=leaveOn(x.d,x.e);
-  if(dup&&dup!==x){
-    x.st='x'; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
-    toast(`${nm}님 ${x.d}은 이미 ${LEAVE_NM[dup.t]}로 확정되어 있어 이 신청은 반려했습니다`);
-    return;
+  if(!x.k){   // 연차만 — 그 날에 이미 확정된 연차가 있으면 승인하지 않는다(두 번 차감 방지)
+    const dup=leaveOn(x.d,x.e);
+    if(dup&&dup!==x){
+      x.st='x'; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
+      toast(`${nm}님 ${x.d}은 이미 ${LEAVE_NM[dup.t]}로 확정되어 있어 이 신청은 반려했습니다`);
+      return;
+    }
   }
   delete x.st; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
-  toast(`${nm}님 ${x.d} ${LEAVE_NM[x.t]} 승인`);
+  toast(`${nm}님 ${x.d} ${lvName(x)} 승인`);
 }
 function lvRejectOne(id){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
@@ -3902,7 +4087,7 @@ function lvApproveAll(){
   let okc=0, dupc=0;
   w.forEach(x=>{
     const it=leavesDB().items[x.id]; if(!it)return;
-    const dup=leaveOn(it.d,it.e);              // 이미 확정된 연차가 있으면 반려 (이중 차감 방지)
+    const dup=it.k?null:leaveOn(it.d,it.e);    // 연차만 — 이미 확정된 연차가 있으면 반려 (이중 차감 방지)
     if(dup&&dup!==it){ it.st='x'; dupc++; } else { delete it.st; okc++; }
     it.ts=Date.now(); queueLeave(x.id);
   });
@@ -3920,10 +4105,11 @@ function renderLeaveWait(){
   w.forEach(x=>{
     const nm=(emp(x.e)||{}).name||'';
     s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">
-      <div style="min-width:0;font-size:13.5px;"><b>${esc(nm)}</b> ${x.d.slice(5).replace('-','.')} ${LEAVE_NM[x.t]||''}
+      <div style="min-width:0;font-size:13.5px;"><b>${esc(nm)}</b> ${x.d.slice(5).replace('-','.')} ${esc(lvName(x)+lvWhen(x))}
       ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
       ${lvPending(x.id)?'<span class="tag hol" style="flex-shrink:0;">전송 중</span>':''}
-      ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;">
+      ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+        ${(x.k==='early'||x.k==='late')?`<button class="btn y" style="padding:7px 9px;font-size:11.5px;" onclick="lvToHalf('${x.id}')">${x.k==='early'?'오후':'오전'} 반차로</button>`:''}
         <button class="btn p" style="padding:7px 11px;font-size:12.5px;" onclick="lvApprove('${x.id}')">승인</button>
         <button class="btn ghost" style="padding:7px 11px;font-size:12.5px;" onclick="lvRejectOne('${x.id}')">반려</button>
       </div>`:'<span class="tag man" style="flex-shrink:0;">대기</span>'}</div>`;
@@ -3933,10 +4119,10 @@ function renderLeaveWait(){
   const serr=leaveSendErr(mine||undefined);
   if(serr.length){
     s+=`<div class="card" style="background:#FDECEC;border:1.5px solid var(--red);">
-      <div style="font-weight:800;margin-bottom:6px;color:#A32020;">⚠️ 서버에 전달되지 못한 연차 ${serr.length}건</div>`;
+      <div style="font-weight:800;margin-bottom:6px;color:#A32020;">⚠️ 서버에 전달되지 못한 신청 ${serr.length}건</div>`;
     serr.forEach(x=>{
       s+=`<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
-        <b>${esc((emp(x.e)||{}).name||'')}</b> ${x.d} ${LEAVE_NM[x.t]||''}
+        <b>${esc((emp(x.e)||{}).name||'')}</b> ${x.d} ${esc(lvName(x)+lvWhen(x))}
         ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>`;
     });
     s+=`<button class="btn wide" style="margin-top:10px;background:var(--red);color:#fff;" onclick="failRetry()">다시 보내기</button>
