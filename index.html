@@ -248,6 +248,15 @@ td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center;white-s
 .ot-log{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14px;}
 .ot-log:last-child{border-bottom:none;}
 .ot-log .plus{font-weight:800;color:var(--purple);font-size:15px;}
+/* 비품 신청 */
+.sup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line);}
+.sup-row:last-child{border-bottom:none;}
+.sup-row .nm{font-weight:800;font-size:15.5px;word-break:break-all;}
+.sup-row .q{font-weight:700;font-size:13px;color:var(--purple);margin-left:4px;}
+.sup-row .btn{flex:none;padding:8px 13px;font-size:13px;border-radius:9px;white-space:nowrap;}
+.nav button{position:relative;}
+.nav .ncnt{display:none;position:absolute;top:3px;left:calc(50% + 5px);min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:800;font-style:normal;line-height:17px;}
+.nav .ncnt.on{display:block;}
 
 .emp-row{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);cursor:pointer;}
 .emp-row:last-child{border-bottom:none;}
@@ -317,6 +326,23 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <button onclick="statusMove(1)">›</button>
     </div>
     <div id="statusBody"></div>
+  </div>
+
+  <!-- ============ 비품 신청 (모두에게 보임) ============ -->
+  <div class="page" id="pg-sup">
+    <h2 class="sec">비품 신청</h2>
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:4px;">📦 필요한 비품을 알려 주세요</div>
+      <div class="muted">신청하면 관리자에게 알림이 갑니다. 신청 목록은 모두에게 보이고, 관리자가 확인하면 목록에서 사라집니다.</div>
+      <div id="supWho"></div>
+      <label class="f" for="supNm">필요한 비품</label><input id="supNm" maxlength="40" autocomplete="off" placeholder="예: A4 용지, 볼펜, 물티슈">
+      <label class="f" for="supQ">수량 · 메모 (선택)</label><input id="supQ" maxlength="60" autocomplete="off" placeholder="예: 2박스, 검정색으로">
+      <button class="btn p wide" style="margin-top:12px;" onclick="saveSup()">📦 신청하기</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:4px;">신청된 비품 <span id="supCnt" style="color:var(--purple);"></span></div>
+      <div id="supList"></div>
+    </div>
   </div>
 
   <!-- ============ 직원 관리 ============ -->
@@ -483,6 +509,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <div class="nav">
     <button class="on" data-p="kiosk" onclick="go('kiosk')"><span class="ico">🕐</span>출퇴근</button>
     <button data-p="status" onclick="go('status',true)"><span class="ico">📊</span>현황</button>
+    <button data-p="sup" onclick="go('sup')"><span class="ico">📦</span>비품<i class="ncnt" id="supBadge"></i></button>
     <button data-p="emp" onclick="go('emp',true)"><span class="ico">👥</span>직원관리</button>
     <button data-p="leave" onclick="go('leave',true)"><span class="ico">🌴</span>연차</button>
     <button data-p="pay" onclick="go('pay',true)"><span class="ico">💰</span>급여</button>
@@ -724,7 +751,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261109_163418'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261112_015016'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -780,6 +807,8 @@ function failRetry(){
   Object.keys(it).forEach(id=>{ if(it[id]&&it[id].sendErr){ delete it[id].sendErr; queueLeave(id); } });
   // 예전에는 연차만 재큐해서, 근태는 한 건도 다시 보내지 않고 유실 목록만 지웠다.
   Object.keys(DB.recHold||{}).forEach(k=>{ const [d,e]=k.split('|'); if(d&&e)queueRec(d,e); });
+  // 비품: 서버가 거부해 멈춰 둔 신청을 다시 올릴 대상으로 (관리자 알림은 이미 갔으므로 또 보내지 않는다)
+  const so=supOutbox(); Object.keys(so).forEach(id=>{ if(so[id]===2)so[id]=3; }); supFlagBad.clear();
   save(); renderFailBar();
   if(cloudOn()){ cloudSync(); toast('다시 보내는 중입니다'); } else toast('인터넷에 연결되면 자동으로 보냅니다'); }
 function failClear(){ if(!confirm('이 알림만 지울까요?\n(저장되지 못한 내용 자체는 그대로 남습니다)'))return;
@@ -835,6 +864,7 @@ function go(p,needAdmin){
   if(p==='emp')renderEmpList();
   if(p==='pay')renderPay();
   if(p==='leave')renderLeave();
+  if(p==='sup')renderSup();
   if(p==='set'){renderNotifyCard();applySetLock();renderPushUI();renderGeoCard();renderHolCard();renderPinWeak();renderLeftCard();}
   window.scrollTo(0,0);
 }
@@ -3729,6 +3759,7 @@ async function cloudSync(){
       if(extras.length){ DB.employees.push(...extras); cloudPushRoster(); }
       ensureMain();
     }
+    supMergeCloud(room.supplies); supBadge(); // 비품: 클라우드 우선 + 이 기기에서 만든 미전송분 올림
     // 관리자 전용 데이터 수신 (급여·주민번호·계좌·급여탭 수정값)
     if(cloudCfg().role==='admin'){
       if(room.priv){
@@ -3769,6 +3800,7 @@ async function cloudSync(){
       if(document.getElementById('pg-emp').classList.contains('on'))renderEmpList();
       if(document.getElementById('pg-pay').classList.contains('on'))renderPay();
       if(document.getElementById('pg-leave').classList.contains('on'))renderLeave();
+      if(document.getElementById('pg-sup').classList.contains('on'))renderSup();
     }
     if(document.getElementById('pg-set').classList.contains('on')){renderNotifyCard();applySetLock();renderPinWeak();renderHolCard();renderLeftCard();}
   }catch(e){ console.warn('클라우드 동기화 실패', e); }
@@ -3897,6 +3929,170 @@ function handleEvents(events){
   if(cloudCfg().role==='admin'&&keys.length>300){
     const keep={}; keys.slice(-150).forEach(k=>keep[k]=events[k]);
     cfetch('/events',{method:'PUT',body:JSON.stringify(keep)}).catch(()=>{});
+  }
+}
+/* ================== 비품 신청 (2026-11-12) ==================
+   누구나 필요한 비품을 올리고, 신청 목록은 모든 기기에 보인다.
+   관리자 기기에서 [✓ 확인]을 누르면 ok 가 붙어 모든 기기의 목록에서 사라진다.
+   신청한 본인은 자기 폰에서 [취소](del) 할 수 있다.
+   클라우드: /supplies/items/<id> = {e,nm,q,ts, ok,by, del}
+   - 항목 하나씩 PATCH 한다. 통째 PUT 은 그 사이 다른 기기가 올린 신청을 날린다.
+   - ok·del 은 붙기만 하고 떼지 않는다 → 기기마다 늦게 받아도 결국 같은 결과(합집합 병합).
+   - 이 기기에서 만든 신청은 DB.supOut 에 남겨 두고, 클라우드에 올라간 것이 확인되면 그때 한 번만
+     관리자에게 알린다(pushEvent 'rq' → 관리자 앱 알림 · ntfy · 회사 PC 웹푸시가 함께 간다).
+     오프라인에서 신청해도 연결되는 순간 올라가고 알림이 간다.
+   - 서버가 거부하면(보안규칙에 supplies 칸이 없을 때) 빨간 띠로 알리고, 관리자에게는
+     '목록 저장 실패' 표시를 붙여 알림만이라도 보낸다 — 신청이 아무도 모르게 묻히지 않게.
+   - 끝난 신청(확인·취소)은 30일 뒤 관리자 기기가 클라우드에서 지운다 (방 전체를 25초마다 읽으므로). */
+const SUP_ID=/^s[a-z0-9]{4,30}$/;
+const supBusy=new Set(), supFlagBad=new Set();
+function suppliesDB(){ DB.supplies=DB.supplies||{}; DB.supplies.items=DB.supplies.items||{}; return DB.supplies; }
+// 이 기기에서 만든 신청의 전송 상태: 1=올릴 것(알림 전) · 2=서버 거부(알림은 보냄) · 3=다시 올릴 것(알림은 보냄)
+function supOutbox(){ DB.supOut=DB.supOut||{}; return DB.supOut; }
+function supClean(id,x){ // 클라우드 값은 믿지 않는다 — 기계가 만든 모양만, 정해진 칸만 받는다
+  if(!(typeof id==='string'&&SUP_ID.test(id)&&x&&typeof x==='object'&&!Array.isArray(x)))return null;
+  if(!safeId(x.e))return null;
+  const nm=safeTxt(x.nm,40).trim(), ts=safeNum(x.ts,0,1e15);
+  if(!nm||ts==null)return null;
+  const o={e:x.e,nm,ts};
+  const q=safeTxt(x.q,60).trim(); if(q)o.q=q;
+  const ok=safeNum(x.ok,1,1e15); if(ok!=null){ o.ok=ok; o.by=safeTxt(x.by,40); }
+  const del=safeNum(x.del,1,1e15); if(del!=null)o.del=del;
+  return o;
+}
+function supMe(){ const c=cloudCfg(); return c&&c.myEmpId&&emp(c.myEmpId)?c.myEmpId:null; } // 개인 폰이면 그 사람
+function supLive(x){ return !!(x&&!x.ok&&!x.del); }
+function supPending(){
+  return Object.entries(suppliesDB().items).filter(([,x])=>supLive(x))
+    .map(([id,x])=>({id,...x})).sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
+function supWhen(ts){
+  const d=new Date(ts||0), hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  return fmtD(d)===todayStr()?'오늘 '+hm:`${d.getMonth()+1}.${d.getDate()}(${DAYNM[d.getDay()]}) ${hm}`;
+}
+function supEvText(x){ return '📦 비품: '+x.nm+(x.q?' ('+x.q+')':''); }
+function supBadge(){
+  const b=document.getElementById('supBadge'); if(!b)return;
+  const n=supPending().length; b.textContent=n>99?'99+':(n?String(n):''); b.classList.toggle('on',n>0);
+}
+function renderSup(){
+  const me=supMe(), can=canManage(), list=supPending(), O=supOutbox(), on=cloudOn();
+  const w=document.getElementById('supWho');
+  if(me)w.innerHTML=`<div style="margin-top:12px;font-size:14px;">신청자 <b>${esc(emp(me).name)}</b>님</div>`;
+  else{ // 키오스크·관리자 기기: 매번 이름을 고른다 (공용 기기에서 앞사람 이름으로 올라가지 않게)
+    const cur=(document.getElementById('supEmp')||{}).value||'';
+    w.innerHTML=`<label class="f" for="supEmp">신청하는 사람</label><select id="supEmp"><option value="">이름을 고르세요</option>${
+      activeEmps().map(e=>`<option value="${esc(e.id)}"${e.id===cur?' selected':''}>${esc(e.name)}</option>`).join('')}</select>`;
+  }
+  document.getElementById('supCnt').textContent=list.length?list.length+'건':'';
+  let h=list.length?'':'<div class="muted">지금 신청된 비품이 없어요.</div>';
+  list.forEach(x=>{
+    const btn=can?`<button class="btn p" onclick="supOk('${x.id}')">✓ 확인</button>`
+      :(me&&x.e===me?`<button class="btn red" onclick="supDel('${x.id}')">취소</button>`:'');
+    const st=(!on||!O[x.id])?'':(O[x.id]===2?' · <b style="color:var(--red);">서버 저장 실패</b>':' · 올리는 중');
+    h+=`<div class="sup-row"><div style="min-width:0;"><div class="nm">${esc(x.nm)}${x.q?`<span class="q">${esc(x.q)}</span>`:''}</div>
+      <div class="muted" style="margin-top:3px;">${esc((emp(x.e)||{}).name||'직원')} · ${supWhen(x.ts)}${st}</div></div>${btn}</div>`;
+  });
+  if(list.length)h+=`<div class="muted" style="margin-top:10px;">${can?'챙겨 두었으면 [✓ 확인]을 누르세요. 모두의 목록에서 사라집니다.':'관리자가 확인하면 목록에서 사라집니다.'}</div>`;
+  document.getElementById('supList').innerHTML=h;
+  supBadge();
+}
+function saveSup(){
+  const me=supMe(), eid=me||(document.getElementById('supEmp')||{}).value||'', e=emp(eid);
+  const nmEl=document.getElementById('supNm'), qEl=document.getElementById('supQ');
+  const nm=nmEl.value.trim().slice(0,40), q=qEl.value.trim().slice(0,60);
+  if(!e){toast('신청하는 사람을 골라 주세요');return;}
+  if(!nm){toast('필요한 비품을 적어 주세요');return;}
+  const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const x={e:eid,nm,ts:Date.now()}; if(q)x.q=q;
+  suppliesDB().items[id]=x; supOutbox()[id]=1;
+  save();
+  nmEl.value=''; qEl.value='';
+  const sel=document.getElementById('supEmp'); if(sel)sel.value='';
+  renderSup();
+  if(!cloudOn()){ toast('비품 신청을 등록했습니다'); return; }
+  supUp(id,true);
+}
+async function supUp(id,loud){ // 이 기기에서 만든 신청 하나를 클라우드에 올린다
+  const O=supOutbox(), x=suppliesDB().items[id], st=O[id];
+  if(!x||!(st===1||st===3)||supBusy.has(id)||!cloudOn())return;
+  supBusy.add(id);
+  try{
+    const body={e:x.e,nm:x.nm,ts:x.ts};
+    if(x.q)body.q=x.q;
+    if(x.ok){ body.ok=x.ok; body.by=x.by||''; }
+    if(x.del)body.del=x.del;               // 올라가기 전에 확인·취소한 것 — 표시째 올린다
+    await cfetch('/supplies/items/'+id,{method:'PATCH',body:JSON.stringify(body)});
+    supArrived(id,x);
+    if(loud)toast('신청했어요 — 관리자에게 알렸습니다');
+  }catch(e){
+    if(isRejected(e)){
+      O[id]=2; lsSave();
+      failNote('비품',(emp(x.e)||{}).name||x.e,x.nm,String(e.message||''));
+      // 목록에는 못 올라갔어도 관리자는 알아야 한다 — 알림만이라도 보낸다 (처음 한 번)
+      if(st===1&&supLive(x))pushEvent('rq',x.e,supEvText(x)+' · ⚠️ 목록 저장 실패(보안규칙 확인)');
+      toast('⚠️ 저장 실패 — 관리자에겐 알렸어요');
+    } else if(loud) toast('인터넷이 연결되면 자동으로 올립니다');
+  } finally { supBusy.delete(id); }
+  if(document.getElementById('pg-sup').classList.contains('on'))renderSup(); else supBadge();
+}
+function supArrived(id,x){ // 클라우드에 올라간 것이 확인됨 → 처음이면 그때 한 번만 관리자에게 알린다
+  const O=supOutbox(), st=O[id]; if(!st)return;
+  delete O[id]; lsSave();
+  if(st===1&&supLive(x))pushEvent('rq',x.e,supEvText(x));
+}
+async function supFlag(id,f){ // 확인·취소 표시만 올린다 (그 항목에만 PATCH)
+  if(!cloudOn()||supFlagBad.has(id))return;
+  try{ await cfetch('/supplies/items/'+id,{method:'PATCH',body:JSON.stringify(f)}); }
+  catch(e){
+    if(isRejected(e)){
+      supFlagBad.add(id); const x=suppliesDB().items[id]||{};
+      failNote('비품',(emp(x.e)||{}).name||'',x.nm||id,String(e.message||''));
+    } // 인터넷 문제면 다음 동기화(병합)에서 다시 올린다
+  }
+}
+function supOk(id){
+  if(!canManage())return;
+  const x=suppliesDB().items[id]; if(!supLive(x))return;
+  if(!confirm(`‘${x.nm}’ 신청을 확인했나요?\n확인하면 모두의 목록에서 사라집니다.`))return;
+  const me=supMe();
+  x.ok=Date.now(); x.by=me?emp(me).name:'관리자';
+  save(); renderSup(); toast('확인했습니다 — 목록에서 뺐어요');
+  if(supOutbox()[id])supUp(id); else supFlag(id,{ok:x.ok,by:x.by});
+}
+function supDel(id){
+  const x=suppliesDB().items[id], me=supMe();
+  if(!supLive(x)||!me||x.e!==me)return;
+  if(!confirm(`‘${x.nm}’ 신청을 취소할까요?`))return;
+  x.del=Date.now();
+  save(); renderSup(); toast('신청을 취소했습니다');
+  if(supOutbox()[id])supUp(id); else supFlag(id,{del:x.del});
+}
+function supMergeCloud(cl){
+  const S=suppliesDB(), O=supOutbox(), ci={};
+  const raw=(cl&&typeof cl==='object'&&cl.items&&typeof cl.items==='object')?cl.items:{};
+  let bad=0;
+  Object.entries(raw).forEach(([id,c])=>{ const v=supClean(id,c); if(v)ci[id]=v; else bad++; });
+  if(bad)console.warn('모양이 이상한 비품 항목 무시',bad);   // 화면·onclick 에 넣지 않는다
+  Object.entries(S.items).forEach(([id,x])=>{
+    if(!x)return;
+    const c=ci[id];
+    if(!c){ if(O[id]===1||O[id]===3)supUp(id); return; }    // 아직 못 올린 내 신청 → 다시 올린다
+    const f={};                                              // 내 쪽에만 있는 확인·취소 표시 → 올린다
+    if(x.ok&&!c.ok){ f.ok=x.ok; f.by=x.by||''; }
+    if(x.del&&!c.del)f.del=x.del;
+    if(Object.keys(f).length){ Object.assign(c,f); supFlag(id,f); }
+    if(O[id])supArrived(id,c);                               // 올라간 것이 확인됨 → (처음이면) 알림
+  });
+  // 클라우드에 없는 항목은 이 기기에서 만든 미전송분만 남긴다 (관리자 기기가 정리한 옛 항목은 버린다)
+  const next={};
+  Object.entries(S.items).forEach(([id,x])=>{ if(x&&!ci[id]&&O[id])next[id]=x; });
+  S.items=Object.assign(next,ci);
+  // 끝난 지 30일 지난 신청은 관리자 기기가 클라우드에서 지운다 (한 번에 20건까지)
+  if(canManage()){
+    const old=Date.now()-30*864e5;
+    Object.entries(ci).filter(([id,c])=>{ const end=Math.max(c.ok||0,c.del||0); return !O[id]&&end>0&&end<old; })
+      .slice(0,20).forEach(([id])=>{ delete S.items[id]; cfetch('/supplies/items/'+id,{method:'DELETE'}).catch(()=>{}); });
   }
 }
 /* ================== 연차 신청 (직원) ==================
@@ -4865,6 +5061,7 @@ ensureMain(); // 메인관리자 영구 지정
 moveFromHash(); adminFromHash(); joinFromHash();
 adminOK=!!DB.settings.adminOK; // 이 기기에서 비밀번호 입력한 적 있으면 기억
 applyNavVis(); // 설정 탭은 메인 관리자 기기에만 표시
+supBadge(); // 비품 신청 건수 (하단 비품 탭의 빨간 숫자)
 renderFailBar(); // 서버에 저장되지 못한 내용이 있으면 상단에 띠로 알린다
 try{renderPinWeak();}catch(e){}
 try{renderHolCard();}catch(e){}
