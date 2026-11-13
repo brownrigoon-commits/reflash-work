@@ -755,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261113_170240'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261113_172739'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -4085,7 +4085,8 @@ async function cloudSync(){
     if(room.geo&&typeof room.geo==='object'){ const P={};                  // 창고 칸 A·B (숫자 좌표만)
       Object.entries((room.geo.pts&&typeof room.geo.pts==='object')?room.geo.pts:{}).forEach(([k,p])=>{
         if(GEO_SLOTS.some(s=>s[0]===k)&&p&&isFinite(p.lat)&&isFinite(p.lng))P[k]={lat:+p.lat,lng:+p.lng,acc:Number(p.acc)||0,ts:Number(p.ts)||0}; });
-      window._geo=Object.assign({},window._geo||{},{pts:P,oldOff:room.geo.oldOff===true}); }
+      const rd=safeNum(room.geo.rad,10,100000);                              // 켜짐·반경도 클라우드 기준 (예전: 켜짐이 빠져 동기화 때마다 꺼졌다)
+      window._geo=Object.assign({},window._geo||{},{pts:P,oldOff:room.geo.oldOff===true,on:room.geo.on===true},rd!=null?{rad:rd}:{}); }
     { const go={}; Object.entries((room.geoOk&&typeof room.geoOk==='object')?room.geoOk:{}).forEach(([id,x])=>{
         if(safeId(id)&&x&&typeof x.ok==='boolean'&&typeof x.ts==='number')go[id]={ok:x.ok,ts:x.ts,v:Number(x.v)||1}; });
       const me=myEmpId(), mine=me?geoOkOf(me):null;                       // 위치 확인 동의 (직원별)
@@ -5040,15 +5041,20 @@ async function geoSaveSlot(k){   // 그 창고에서 누른다 — 지금 GPS �
   geoPut({pts:P}); toast(n+' 위치를 저장했습니다');
 }
 function geoDelOld(){ if(confirm('처음 저장한 위치를 인정 장소에서 뺄까요?'))geoPut({oldOff:true}); }
+function geoSlotState(k,q){   // 칸 상태 — 지도 주소로 넣은 값(acc 0)인지, 현장에서 GPS 로 저장한 값인지
+  if(!q)return '아직 저장 안 됨';
+  const a=Number((((geoCfg()||{}).pts||{})[k]||{}).acc)||0;
+  return a>0?`저장됨 (현장 GPS, 오차 약 ${Math.round(a)}m)`:'저장됨 (지도 주소 기준)';
+}
 function geoSlotsHtml(){
   const pts=geoPts();
   let h='<div class="muted" style="margin-bottom:6px;">출퇴근 인정 장소 — 아래 어느 곳이든 반경 안이면 정상 처리</div>';
   GEO_SLOTS.forEach(([k,n])=>{ const q=pts.find(x=>x.k===k);
-    h+=`<div style="padding:8px 0;border-bottom:1px solid var(--line);"><b>${esc(n)}</b> <span class="muted">${q?'저장됨':'아직 저장 안 됨'}</span>`
+    h+=`<div style="padding:8px 0;border-bottom:1px solid var(--line);"><b>${esc(n)}</b> <span class="muted">${geoSlotState(k,q)}</span>`
       +`<button class="btn ghost wide" style="margin-top:6px;" onclick="geoSaveSlot('${k}')">📍 지금 내 위치를 ${esc(n.split(' (')[0])}로 저장</button></div>`; });
   const old=pts.find(x=>x.k==='old');
   if(old)h+=`<div style="padding:8px 0;font-size:13px;">처음 저장한 위치 <span class="muted">(${esc(old.lat)}, ${esc(old.lng)}) — 계속 인정됨</span> · <a href="javascript:void(0)" onclick="geoDelOld()">빼기</a></div>`;
-  return h+'<div class="muted" style="margin:6px 0 4px;font-size:12px;">각 창고에 가서 그 창고 버튼을 한 번 누르면 됩니다(주소 입력 불필요).</div>';
+  return h+'<div class="muted" style="margin:6px 0 4px;font-size:12px;">위치를 다시 맞출 때만, 그 창고 앞(실외)에서 버튼을 누르세요 — 누른 자리로 바뀝니다.</div>';
 }
 function geoSaveRad(){
   const v=parseInt(document.getElementById('geoRad').value,10);
