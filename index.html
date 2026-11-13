@@ -755,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261113_164117'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261113_170240'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -4082,6 +4082,10 @@ async function cloudSync(){
       Object.entries(up).forEach(([d,em])=>Object.keys(em).forEach(id=>queueRec(d,id)));
     }
     window._geo=safeGeoVal(room.geo)||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준, 숫자만)
+    if(room.geo&&typeof room.geo==='object'){ const P={};                  // 창고 칸 A·B (숫자 좌표만)
+      Object.entries((room.geo.pts&&typeof room.geo.pts==='object')?room.geo.pts:{}).forEach(([k,p])=>{
+        if(GEO_SLOTS.some(s=>s[0]===k)&&p&&isFinite(p.lat)&&isFinite(p.lng))P[k]={lat:+p.lat,lng:+p.lng,acc:Number(p.acc)||0,ts:Number(p.ts)||0}; });
+      window._geo=Object.assign({},window._geo||{},{pts:P,oldOff:room.geo.oldOff===true}); }
     { const go={}; Object.entries((room.geoOk&&typeof room.geoOk==='object')?room.geoOk:{}).forEach(([id,x])=>{
         if(safeId(id)&&x&&typeof x.ok==='boolean'&&typeof x.ts==='number')go[id]={ok:x.ok,ts:x.ts,v:Number(x.v)||1}; });
       const me=myEmpId(), mine=me?geoOkOf(me):null;                       // 위치 확인 동의 (직원별)
@@ -4964,7 +4968,16 @@ function rptReject(){
    반경 밖이어도 막지 않고 기록에 거리(r.far)를 남겨 관리자가 확인한다. */
 const GEO_RAD_DEF=200;      // 기본 반경 200m (GPS 오차상 50m는 불가 — 실내에서 100m 넘게 틀어짐)
 function geoCfg(){ return window._geo||null; }
-function geoOn(){ const g=geoCfg(); return !!(g&&g.on&&g.lat!=null&&g.lng!=null); }
+/* 출퇴근 인정 장소 — 창고 두 곳(칸 A·B) + 예전에 저장한 한 곳. 어느 곳이든 반경 안이면 정상 */
+const GEO_SLOTS=[['A','A 창고 (가좌동 55-10)'],['B','B 창고 (송포로 405)']];
+function geoPts(){
+  const g=geoCfg()||{}, P=(g.pts&&typeof g.pts==='object'&&!Array.isArray(g.pts))?g.pts:{}, out=[];
+  GEO_SLOTS.forEach(([k,n])=>{ const p=P[k]; if(p&&isFinite(p.lat)&&isFinite(p.lng))out.push({k:k,n:n,lat:+p.lat,lng:+p.lng}); });
+  if(g.lat!=null&&g.lng!=null&&isFinite(g.lat)&&isFinite(g.lng)&&!g.oldOff)out.push({k:'old',n:'처음 저장한 위치',lat:+g.lat,lng:+g.lng});
+  return out;
+}
+function geoNearest(lat,lng){ let b=null; geoPts().forEach(q=>{ const d=distM(q.lat,q.lng,lat,lng); if(!b||d<b.d)b={d:d,n:q.n}; }); return b; }
+function geoOn(){ const g=geoCfg(); return !!(g&&g.on&&geoPts().length); }
 function distM(a1,o1,a2,o2){ // 두 좌표 사이 거리(m) — 하버사인
   const R=6371000, t=Math.PI/180;
   const dA=(a2-a1)*t, dO=(o2-o1)*t;
@@ -4986,9 +4999,9 @@ async function checkGeo(){ // {s:'skip'|'ok'|'far'|'fail', dist, acc}
   if(!geoOn())return {s:'skip'};
   const g=geoCfg(), p=await getPos();
   if(!p||!p.coords)return {s:'fail'};
-  const d=distM(g.lat,g.lng,p.coords.latitude,p.coords.longitude);
+  const b=geoNearest(p.coords.latitude,p.coords.longitude);              // 가장 가까운 인정 장소
   const acc=Math.round(p.coords.accuracy||0);
-  return {s:d<=(g.rad||GEO_RAD_DEF)+acc?'ok':'far', dist:d, acc};
+  return {s:b.d<=(g.rad||GEO_RAD_DEF)+acc?'ok':'far', dist:b.d, acc, at:b.n};
 }
 /* ── 설정: 회사 위치 ── */
 function geoPut(obj){
@@ -4997,7 +5010,7 @@ function geoPut(obj){
   renderGeoCard();
 }
 function geoToggle(on){
-  if(on&&!(geoCfg()&&geoCfg().lat!=null)){
+  if(on&&!geoPts().length){
     toast('먼저 회사 위치를 저장해 주세요');
     const c=document.getElementById('geoOnChk'); if(c)c.checked=false;
     return;
@@ -5016,6 +5029,27 @@ async function geoSaveHere(){
   geoPut({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6),acc,ts:Date.now()});
   toast('회사 위치를 저장했습니다');
 }
+async function geoSaveSlot(k){   // 그 창고에서 누른다 — 지금 GPS 위치를 그 칸에 저장
+  const n=(GEO_SLOTS.find(x=>x[0]===k)||[k,k])[1];
+  const p=await getPos();
+  if(!p||!p.coords){ toast('위치를 가져오지 못했습니다. 위치 권한을 허용하고 실외에서 다시 시도해 주세요'); return; }
+  const acc=Math.round(p.coords.accuracy||0);
+  if(!confirm(`지금 위치를 ${n}로 저장할까요?\n(GPS 오차 약 ${acc}m)`))return;
+  const P=Object.assign({},((geoCfg()||{}).pts)||{});
+  P[k]={lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6),acc:acc,ts:Date.now()};
+  geoPut({pts:P}); toast(n+' 위치를 저장했습니다');
+}
+function geoDelOld(){ if(confirm('처음 저장한 위치를 인정 장소에서 뺄까요?'))geoPut({oldOff:true}); }
+function geoSlotsHtml(){
+  const pts=geoPts();
+  let h='<div class="muted" style="margin-bottom:6px;">출퇴근 인정 장소 — 아래 어느 곳이든 반경 안이면 정상 처리</div>';
+  GEO_SLOTS.forEach(([k,n])=>{ const q=pts.find(x=>x.k===k);
+    h+=`<div style="padding:8px 0;border-bottom:1px solid var(--line);"><b>${esc(n)}</b> <span class="muted">${q?'저장됨':'아직 저장 안 됨'}</span>`
+      +`<button class="btn ghost wide" style="margin-top:6px;" onclick="geoSaveSlot('${k}')">📍 지금 내 위치를 ${esc(n.split(' (')[0])}로 저장</button></div>`; });
+  const old=pts.find(x=>x.k==='old');
+  if(old)h+=`<div style="padding:8px 0;font-size:13px;">처음 저장한 위치 <span class="muted">(${esc(old.lat)}, ${esc(old.lng)}) — 계속 인정됨</span> · <a href="javascript:void(0)" onclick="geoDelOld()">빼기</a></div>`;
+  return h+'<div class="muted" style="margin:6px 0 4px;font-size:12px;">각 창고에 가서 그 창고 버튼을 한 번 누르면 됩니다(주소 입력 불필요).</div>';
+}
 function geoSaveRad(){
   const v=parseInt(document.getElementById('geoRad').value,10);
   if(!(v>=50&&v<=2000)){ toast('반경은 50~2000m 사이로 넣어 주세요'); return; }
@@ -5027,7 +5061,7 @@ function geoOkText(){
   const g=geoCfg()||{}, rad=g.rad||GEO_RAD_DEF;
   return '📍 출퇴근 위치 확인 동의\n\n'
    +'회사는 출퇴근 장소를 확인하기 위해, 출근·퇴근 버튼을 누르는 그 순간에만 이 폰의 위치를 1회 확인합니다.\n\n'
-   +'· 저장하는 것: 회사에서 '+rad+'m 밖에서 찍었을 때 회사까지의 거리(m)만 — 위치 좌표는 저장하지 않습니다\n'
+   +'· 저장하는 것: 회사 창고(가좌동·송포로) 어느 곳에서도 '+rad+'m 밖에서 찍었을 때 가장 가까운 창고까지의 거리(m)만 — 위치 좌표는 저장하지 않습니다\n'
    +'· 평소에는 위치를 보지 않고, 근무 중 이동도 기록하지 않습니다\n'
    +'· 보관: 근태 기록과 함께 (퇴사 후 3년)\n'
    +'· 동의하지 않아도 불이익은 없습니다 — 위치 확인 없이 출퇴근이 기록됩니다\n'
@@ -5074,22 +5108,20 @@ function geoConsentHtml(){   // 관리자 설정: 직원별 동의 현황
 }
 async function geoTestHere(){   // 켜기 전에도 잴 수 있다 — 관리자 폰에서 먼저 시험(저장 없음, 직원에게 영향 없음)
   const g=geoCfg();
-  if(!(g&&g.lat!=null&&g.lng!=null)){ toast('먼저 회사 위치를 저장해 주세요'); return; }
+  if(!geoPts().length){ toast('먼저 창고 위치를 저장해 주세요'); return; }
   const p=await getPos();
   if(!p||!p.coords){ toast('위치를 가져오지 못했습니다 — 폰 설정에서 이 앱(브라우저)의 위치 권한을 허용하고 다시 눌러 주세요'); return; }
-  const d=distM(g.lat,g.lng,p.coords.latitude,p.coords.longitude), acc=Math.round(p.coords.accuracy||0), rad=g.rad||GEO_RAD_DEF;
-  toast((d<=rad+acc?`회사에서 ${d}m — 반경 안 ✓ 정상 처리`:`회사에서 ${d}m — 반경 밖 (기록에 표시)`)
+  const nb=geoNearest(p.coords.latitude,p.coords.longitude), d=nb.d, acc=Math.round(p.coords.accuracy||0), rad=g.rad||GEO_RAD_DEF;
+  toast((d<=rad+acc?`${nb.n}에서 ${d}m — 반경 안 ✓ 정상 처리`:`가장 가까운 ${nb.n}에서 ${d}m — 반경 밖 (기록에 표시)`)
     +` · 오차 ${acc}m · 반경 ${rad}m`+(geoOn()?'':' · 직원에게는 아직 꺼져 있음'));
 }
 function renderGeoCard(){
   const body=document.getElementById('geoBody'); if(!body)return;
   const g=geoCfg()||{}, chk=document.getElementById('geoOnChk');
   if(chk)chk.checked=!!g.on;
-  const set=g.lat!=null&&g.lng!=null;
+  const set=geoPts().length>0;
   body.innerHTML=`
-    <div class="muted" style="margin-bottom:8px;">회사 위치: ${set?`저장됨 (${esc(g.lat)}, ${esc(g.lng)})`:'<b style="color:#D95B23;">아직 저장 안 됨</b>'}</div>
-    <button class="btn p wide" id="btnGeoHere" onclick="geoSaveHere()">📍 지금 내 위치를 회사로 저장</button>
-    <div class="muted" style="margin:10px 0 4px;font-size:12px;">회사에서 이 버튼을 누르면 됩니다. 주소를 입력할 필요 없습니다.</div>
+    ${geoSlotsHtml()}
     <label class="f">인정 반경 (m)</label>
     <div class="row">
       <input type="number" id="geoRad" value="${g.rad||GEO_RAD_DEF}" min="50" max="2000" step="10" style="flex:1;">
