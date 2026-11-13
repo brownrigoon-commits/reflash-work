@@ -755,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261113_140254'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261113_163459'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -2210,6 +2210,7 @@ function openEmpForm(id){
   editEmpId=id;
   const e=id?emp(id):null;
   document.getElementById('empFormTitle').textContent=e?`${e.name} 정보 수정`:'직원 추가';
+  window._empFormBase=e?{id:e.id,pub:sanitizeEmp(e),priv:privEmp(e)}:null;   // 창에 보여 준 값 — 저장 때 '바뀐 칸'은 이것과 비교
   document.getElementById('fName').value=e?e.name:'';
   document.getElementById('fDuty').value=e?(e.duty||''):'';
   document.getElementById('fType').value=e?e.type:'regular';
@@ -2280,14 +2281,18 @@ function saveEmp(){
   if(isOwnerDev())o.role=document.getElementById('fRole').value; // 권한(직원/부관리자/관리자)은 메인 관리자만 변경
   if(editEmpId&&emp(editEmpId).main)o.role='admin'; // 메인관리자는 권한 강등 불가 (영구)
   let savedId=editEmpId;
+  const fb=(editEmpId&&window._empFormBase&&window._empFormBase.id===editEmpId)?window._empFormBase:null;   // 창을 연 순간의 값
+  const bPub=editEmpId?(fb?fb.pub:sanitizeEmp(emp(editEmpId))):null, bPriv=editEmpId?(fb?fb.priv:privEmp(emp(editEmpId))):null;   // 고치기 전 — 바뀐 칸만 서버로
   if(editEmpId){ Object.assign(emp(editEmpId),o); }
   else{ savedId='e'+Date.now(); DB.employees.push({id:savedId,leaveDate:null,role:'staff',...o}); }
+  dirtyMark('emps',savedId,bPub,sanitizeEmp(emp(savedId)));
+  if(canPriv())dirtyMark('priv',savedId,bPriv,privEmp(emp(savedId)));
   save(); cloudPushRoster(savedId); cloudPushPriv(savedId); closeM('mdEmp'); renderEmpList(); toast('저장되었습니다');
 }
 function retireEmp(){
   const e=emp(editEmpId);
   if(confirm(`${e.name}님을 오늘(${todayStr()}) 자로 퇴사 처리할까요?\n기록은 삭제되지 않습니다.`)){
-    e.leaveDate=todayStr(); save(); cloudPushRoster(editEmpId); closeM('mdEmp'); renderEmpList(); toast('퇴사 처리되었습니다');
+    const bPub=sanitizeEmp(e); e.leaveDate=todayStr(); dirtyMark('emps',e.id,bPub,sanitizeEmp(e)); save(); cloudPushRoster(editEmpId); closeM('mdEmp'); renderEmpList(); toast('퇴사 처리되었습니다');
   }
 }
 
@@ -2295,7 +2300,7 @@ function retireEmp(){
 let payDate=new Date();
 function payMove(d){ payDate.setMonth(payDate.getMonth()+d); renderPay(); }
 function ov(ym,id){ return (DB.overrides[ym]||{})[id]||{}; }
-function setOv(ym,id,k,v){ DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; DB.overrides[ym][id][k]=v; save(); schedulePrivPush(); }
+function setOv(ym,id,k,v){ DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; const ob=DB.overrides[ym][id][k]; DB.overrides[ym][id][k]=v; dirtyOv(ym,id,k,v,ob); save(); schedulePrivPush(); }
 function floor10(n){ return Math.floor(n/10)*10; }
 /* 그 달에 재직한 역일 수 / 그 달 총 역일 수.
    월중 입·퇴사자에게 한 달치를 전액 주던 것을 막는다(2026-10 실측: 월중 입사자가 한 달치 전액으로 계산됐다). */
@@ -3849,58 +3854,129 @@ function mergeOv(base,over){
   Object.entries(over||{}).forEach(([ym,m])=>{ out[ym]=out[ym]||{}; Object.entries(m).forEach(([id,cells])=>{ out[ym][id]={...(out[ym][id]||{}),...cells}; }); });
   return out;
 }
-async function cloudPushPriv(editedId){
+let privChain=Promise.resolve();
+function cloudPushPriv(){ privChain=privChain.then(pushPrivNow,pushPrivNow); return privChain; }   // 한 번에 하나씩
+async function pushPrivNow(){
   const c=cloudCfg(); if(!cloudOn()||!c||c.role!=='admin')return;
   if(!c.key){ if(isOwnerDev()){ c.key=genKey(); save(); } else return; }
-  // 덮어쓰기 금지: 클라우드의 기존 값을 읽어 병합. 빈 값(0원 등)이 실제 값을 지우지 못하게 함
-  /* 읽기에 실패하면 쓰지 않는다 — 예전에는 빈 값으로 보고 덮어써, 다른 관리자가 올린 급여탭 수정값(회사PC 대장이 씀)을 지웠다. */
+  /* 매번 서버 최신을 읽고, 그 위에 이 기기에서 고친 칸만 얹어 올린다. 읽기에 실패하면 쓰지 않는다(다음 동기화 때 다시).
+     예전에는 이 기기 값을 통째로 올려, 동기화와 겹치면 방금 고친 월급·급여탭 칸이 옛 값으로 되돌아갔다. */
   let raw;
   try{ raw=await cfetch('/priv'); }
-  catch(e){ console.warn('급여영역 읽기 실패 — 이번엔 올리지 않음',e); privFailNote(); return; }
+  catch(e){ console.warn('급여영역 읽기 실패 — 다음 동기화 때 다시',e); syncLaterNote(); return; }
   let cur=null; try{ cur=await privDecrypt(raw); }catch(e){}
+  const D0=dirtyGet(), dP=D0.priv||{}, dO=D0.ov||{}, applied=[], conflicts=[];
   const emps=(cur&&cur.emps)||{};
   DB.employees.forEach(e=>{
-    const l=privEmp(e), cl=emps[e.id]||{};
-    emps[e.id]= e.id===editedId ? l : {
-      salary:cl.salary||l.salary||0, hourly:cl.hourly||l.hourly||0, dailyH:cl.dailyH||l.dailyH||8,
-      rrn:cl.rrn||l.rrn||'', bank:cl.bank||l.bank||'', acct:cl.acct||l.acct||''
-    };
+    const l=privEmp(e), cl=emps[e.id];
+    // 서버 값 우선(비어 있는 칸은 이 기기 값) — 다른 관리자가 고친 칸을 덮지 않는다
+    const b=cl?{salary:cl.salary||l.salary||0,hourly:cl.hourly||l.hourly||0,dailyH:cl.dailyH||l.dailyH||8,
+      rrn:cl.rrn||l.rrn||'',bank:cl.bank||l.bank||'',acct:cl.acct||l.acct||''}:l;
+    const df=dP[e.id]; if(df)Object.keys(df).forEach(k=>{ if(df[k].sent)return;
+      if(cl&&dirtyConflict(cl[k],df[k])){ conflicts.push(['p',e.id,k]); return; }   // 그사이 다른 기기가 고친 칸은 덮지 않는다
+      b[k]=df[k].v; applied.push(['p',e.id,k]); });                                  // 이 기기에서 고쳐 아직 안 올린 칸이 이긴다
+    emps[e.id]=b;
   });
-  const enc=await privEncrypt({emps,overrides:mergeOv((cur&&cur.overrides),DB.overrides),ts:Date.now()});
+  const ov=mergeOv((cur&&cur.overrides),{});
+  Object.entries(DB.overrides||{}).forEach(([ym,m])=>Object.entries(m||{}).forEach(([id,cells])=>Object.entries(cells||{}).forEach(([k,v])=>{
+    ov[ym]=ov[ym]||{}; ov[ym][id]=ov[ym][id]||{}; if(!(k in ov[ym][id]))ov[ym][id][k]=v; })));   // 서버에 없는 칸만 이 기기 값으로
+  Object.entries(dO).forEach(([ym,m])=>Object.entries(m).forEach(([id,cells])=>Object.entries(cells).forEach(([k,x])=>{
+    if(x.sent)return; ov[ym]=ov[ym]||{}; ov[ym][id]=ov[ym][id]||{};
+    const sv=(((cur&&cur.overrides)||{})[ym]||{})[id]; if(sv&&(k in sv)&&dirtyConflict(sv[k],x)){ conflicts.push(['o',ym,id,k]); return; }
+    ov[ym][id][k]=x.v; applied.push(['o',ym,id,k]); })));   // 고쳐서 아직 안 올린 칸이 이긴다
+  const enc=await privEncrypt({emps,overrides:ov,ts:Date.now()});
   if(!enc)return;
-  try{ await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)}); }
-  catch(e){ console.warn('priv push 실패',e); privFailNote(); }
+  try{
+    await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)});
+    const D=dirtyGet(), now=Date.now();                                          // 올렸다 — 다음 방 읽기가 확인하면 지운다
+    const pick=a=>a[0]==='p'?[D.priv&&D.priv[a[1]]&&D.priv[a[1]][a[2]],(dP[a[1]]||{})[a[2]]]:[D.ov&&D.ov[a[1]]&&D.ov[a[1]][a[2]]&&D.ov[a[1]][a[2]][a[3]],((dO[a[1]]||{})[a[2]]||{})[a[3]]];
+    applied.forEach(a=>{ const [x,o]=pick(a); if(x&&o&&x.ts===o.ts)x.sent=now; });          // 실제로 얹은 칸에만 '보냄'
+    conflicts.forEach(a=>{ const [x,o]=pick(a); if(x&&o&&x.ts===o.ts){ if(a[0]==='p')delete D.priv[a[1]][a[2]]; else delete D.ov[a[1]][a[2]][a[3]]; } });
+    if(conflicts.length)conflictNote();
+    dirtyClean(D); dirtySet(D);
+  }catch(e){ console.warn('priv push 실패 — 다음 동기화 때 다시',e); syncLaterNote(); }
 }
 let privTimer=null;
 function schedulePrivPush(){ clearTimeout(privTimer); privTimer=setTimeout(cloudPushPriv,800); }
-/* 직원 정보·급여가 서버에 안 올라갔다 — 다음 동기화에서 클라우드 값으로 돌아가므로 사람이 다시 저장해야 한다.
-   (자동 재전송 장치를 넣었다가 뺐다: 명단·급여영역은 통째 PUT 이라 재전송끼리·다른 기기 변경과 서로 덮었다 — 2026-11-13 재검증) */
-function rosterFailNote(){ toast('⚠️ 직원 정보를 서버에 저장하지 못했습니다 — 인터넷을 확인하고 다시 저장해 주세요'); }
-function privFailNote(){ toast('⚠️ 급여 정보를 서버에 저장하지 못했습니다 — 인터넷을 확인하고 다시 저장해 주세요'); }
-async function cloudPushRoster(editedId){
+/* ── 아직 서버에 못 올린 '고친 칸' (방마다 따로, 이 기기에만) ──
+   명단(/emps)·급여영역(/priv)을 통째로 덮어쓰던 구조라, 25초 동기화의 읽기와 저장이 겹치거나 인터넷이 잠깐 끊기면
+   방금 고친 값이 옛 값으로 덮여 사라졌다(7월부터 있던 경합 — 2026-11-13 재검증에서 재현).
+   이제 고친 칸을 여기 적어 두고: 받을 때는 그 칸을 덮지 않고, 보낼 때는 그 칸만 서버 최신 값 위에 얹는다(명단은 직원별 PATCH).
+   보낸 뒤 그사이 다시 고치지 않은 칸만 지운다. DB 밖(localStorage 따로)이라 백업·기기 추가 링크로 다른 기기에 옮겨 가지 않는다.
+   모양: {emps:{id:{칸:{v,ts}}}, priv:{id:{칸:{v,ts}}}, ov:{ym:{id:{칸:{v,ts}}}}} */
+function dirtyKey(){ const c=cloudCfg(); return 'riwork_dirty_'+((c&&c.roomId)||'local'); }
+function dirtyGet(){ try{ const v=JSON.parse(localStorage.getItem(dirtyKey())||'{}'); return (v&&typeof v==='object'&&!Array.isArray(v))?v:{}; }catch(e){ return {}; } }
+function dirtySet(d){ try{ localStorage.setItem(dirtyKey(),JSON.stringify(d)); }catch(e){} }
+function dirtyClean(D){
+  ['emps','priv'].forEach(k=>{ const K=D[k]||{}; Object.keys(K).forEach(id=>{ if(!K[id]||!Object.keys(K[id]).length)delete K[id]; }); });
+  const O=D.ov||{}; Object.keys(O).forEach(ym=>{ Object.keys(O[ym]||{}).forEach(id=>{ if(!Object.keys(O[ym][id]||{}).length)delete O[ym][id]; });
+    if(!Object.keys(O[ym]||{}).length)delete O[ym]; });
+}
+function dirtyMark(kind,id,before,after){   // kind 'emps' | 'priv' — 바뀐 칸만 적는다(before 가 없으면 전부)
+  const D=dirtyGet(), K=D[kind]=D[kind]||{}, m=K[id]=K[id]||{}, ts=Date.now();
+  Object.keys(after||{}).forEach(f=>{ if(!before||JSON.stringify(before[f])!==JSON.stringify(after[f])){
+    const b=(m[f]&&!m[f].sent&&'b' in m[f])?m[f].b:(before?before[f]:null);   // 고치기 전 값 — 올릴 때 서버 값과 비교한다
+    m[f]={v:after[f],b:(b===undefined?null:b),ts:ts}; } });
+  dirtyClean(D); dirtySet(D);
+}
+function dirtyOv(ym,id,k,v,b){ const D=dirtyGet(); D.ov=D.ov||{}; D.ov[ym]=D.ov[ym]||{}; D.ov[ym][id]=D.ov[ym][id]||{};
+  const o=D.ov[ym][id][k], b0=(o&&!o.sent&&'b' in o)?o.b:(b===undefined?null:b);
+  D.ov[ym][id][k]={v:(v===undefined?null:v),b:b0,ts:Date.now()}; dirtySet(D); }
+/* 서버 값이 '고치기 전 값'에서 바뀌었고 내가 넣으려는 값과도 다르면 — 그사이 다른 기기가 고친 것이다 → 덮지 않는다 */
+function dirtyConflict(server,x){ const n=v=>(v==null||v===''||v===0)?'':JSON.stringify(v); return !!x&&'b' in x&&n(server)!==n(x.b)&&n(server)!==n(x.v); }
+function conflictNote(){ if(window._conflictTold)return; window._conflictTold=true;
+  toast('다른 기기에서 먼저 바뀐 칸이 있어 덮지 않았습니다 — 직원 정보·급여 탭을 확인해 주세요'); }
+function dirtyHas(kind){   // 아직 안 올린 칸이 있나
+  const D=dirtyGet(), un=m=>Object.values(m||{}).some(x=>x&&!x.sent);
+  if(kind==='ov')return Object.values(D.ov||{}).some(m=>Object.values(m||{}).some(un));
+  return Object.values(D[kind]||{}).some(un);
+}
+/* 방 읽기를 보낸 시각 T 보다 먼저 올라간 칸은 그 읽기 결과에 이미 들어 있다 — 장부에서 지운다 */
+function dirtyConfirm(T){
+  const D=dirtyGet(); let ch=false;
+  const sweep=m=>Object.keys(m||{}).forEach(k=>{ const x=m[k]; if(x&&x.sent&&x.sent<T){ delete m[k]; ch=true; } });
+  ['emps','priv'].forEach(kind=>Object.values(D[kind]||{}).forEach(sweep));
+  Object.values(D.ov||{}).forEach(m=>Object.values(m||{}).forEach(sweep));
+  if(ch){ dirtyClean(D); dirtySet(D); }
+}
+function syncLaterNote(){   // 못 올린 것이 있다고 한 번만 알린다 — 다음 동기화 때 자동으로 다시 보낸다
+  if(window._syncLaterTold)return; window._syncLaterTold=true;
+  toast('직원·급여 정보를 서버에 아직 못 올렸습니다 — 인터넷이 되면 자동으로 올립니다');
+}
+let empChain=Promise.resolve();
+function cloudPushRoster(){ empChain=empChain.then(pushEmpNow,pushEmpNow); return empChain; }   // 한 번에 하나씩 — 겹치면 순서가 뒤집힌다
+async function pushEmpNow(){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
-  /* 덮어쓰기 금지: 클라우드 명단을 먼저 읽어 병합. 읽기에 실패하면 쓰지 않는다 — 예전에는 '빈 명단'으로 보고
-     이 기기 값으로 통째 덮어써, 다른 기기가 올린 직원과 [임원] 표시를 지웠다. */
-  let cloud;
-  try{ cloud=await cfetch('/emps')||{}; }catch(e){ console.warn('명단 읽기 실패 — 이번엔 올리지 않음',e); if(editedId)rosterFailNote(); return; }
-  const localById={}; DB.employees.forEach(e=>localById[e.id]=sanitizeEmp(e));
-  const obj={};
-  new Set([...Object.keys(cloud),...Object.keys(localById)]).forEach(id=>{
-    const l=localById[id], c=cloud[id];
-    let base;
-    if(!c)base=l;                       // 이 기기에만 있는 직원 → 추가
-    else if(!l)base=c;                  // 클라우드에만 있는 직원 → 보존 (절대 삭제 안 함)
-    else if(id===editedId){ base={...c,...l};   // 방금 수정한 직원: 이 기기 값 우선
-      // 단, 임원·권한·메인관리자는 메인 관리자 기기만 바꾼다 — 다른 기기의 낡은 값으로 되돌리지 않게
-      if(!isOwnerDev()){ base.exec=c.exec===true; base.role=c.role||'staff'; base.main=!!c.main; } }
-    else base={...l,...c};              // 그 외: 클라우드(최신) 우선
-    // 전화번호·담당업무는 어느 쪽이든 비어있지 않은 값이 항상 이김
-    base.phone=(id===editedId?((l&&l.phone)||(c&&c.phone)):((c&&c.phone)||(l&&l.phone)))||'';
-    base.duty=(id===editedId?((l&&l.duty)||''):((c&&c.duty)||(l&&l.duty)||''));
-    obj[id]=base;
-  });
-  try{ await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)}); }
-  catch(e){ console.warn('roster push 실패',e); if(editedId)rosterFailNote(); }
+  const E=dirtyGet().emps||{};
+  for(const id of Object.keys(E)){
+    if(!safeId(id))continue;
+    const f={}, body={};
+    Object.keys(E[id]||{}).forEach(k=>{ const x=E[id][k]; if(x&&!x.sent){ f[k]=x; body[k]=x.v; } });   // 아직 안 올린 칸만
+    if(!Object.keys(body).length)continue;
+    const e=emp(id), drop=[];
+    try{
+      const cur=await cfetch('/emps/'+id);                                       // 지금 서버 값과 비교한다
+      if(cur&&typeof cur==='object'){
+        Object.keys(f).forEach(k=>{ if(dirtyConflict(cur[k],f[k])){ delete body[k]; drop.push(k); } });   // 그사이 다른 기기가 고친 칸은 덮지 않는다
+      }else{
+        if(!e){ drop.push(...Object.keys(f)); Object.keys(body).forEach(k=>delete body[k]); }  // 서버에도 이 기기에도 없는 직원 — 반쪽 레코드를 만들지 않는다
+        else Object.assign(body,sanitizeEmp(e),body);                            // 서버에 없는 직원 → 전체(이름 필수 — 보안규칙)
+      }
+      if(Object.keys(body).length)await cfetch('/emps/'+id,{method:'PATCH',body:JSON.stringify(body)});   // 그 직원의 그 칸만
+      const D=dirtyGet(), g=(D.emps||{})[id]||{}, now=Date.now();
+      Object.keys(f).forEach(k=>{ if(!(g[k]&&g[k].ts===f[k].ts))return;
+        if(drop.includes(k))delete g[k]; else g[k].sent=now; });                 // 올렸다 — 다음 방 읽기가 확인하면 지운다
+      dirtyClean(D); dirtySet(D);
+      if(drop.length&&e)conflictNote();
+    }catch(err){
+      if(isRejected(err)){                                                       // 서버가 거부 — 다시 보내도 안 된다(일시적 4xx 는 아래로)
+        const D=dirtyGet(), g=(D.emps||{})[id]||{}; Object.keys(f).forEach(k=>{ if(g[k]&&g[k].ts===f[k].ts)delete g[k]; });
+        dirtyClean(D); dirtySet(D);
+        toast('⚠️ 서버가 직원 정보 저장을 거부했습니다 ('+String(err.message)+')'); continue;
+      }
+      console.warn('직원 정보 올리기 실패 — 다음 동기화 때 다시',err); syncLaterNote(); return;
+    }
+  }
 }
 function queueRec(date,empId){
   if(!cloudOn())return;
@@ -3972,7 +4048,9 @@ async function cloudSync(){
   try{
     await flushPending();
     await flushLeaves();          // 밀린 연차 신청·승인도 함께 재전송
+    const syncStart=Date.now();
     const room=await cfetch('')||{};
+    dirtyConfirm(syncStart);   // 이 읽기보다 먼저 올라간 고친 칸은 서버 값에 들어 있다 — 장부에서 지운다(그 뒤에 올린 칸은 아래에서 지킨다)
     { // 기록 병합: 클라우드 우선, 이 기기에만 있는 기록은 보존 후 클라우드로 올림 (기기 간 통일)
       // 날짜·직원id 모양이 아닌 기록은 받지 않는다 (onclick="openRec('<id>','<날짜>')" 자리 보호)
       const cr={}; Object.entries(room.recs||{}).forEach(([d,em])=>{
@@ -4014,6 +4092,7 @@ async function cloudSync(){
     leaveMergeCloud(room.leaves); // 연차: 클라우드 우선 + 이 기기에만 있는 항목 올림
     if(room.emps&&Object.keys(room.emps).length){
       const local={}; DB.employees.forEach(e=>local[e.id]=e);
+      const dEmps=dirtyGet().emps||{}; window._cloudEmpIds=new Set(Object.keys(room.emps));   // 못 올린 고친 칸 · 서버에 있는 직원
       const badIds=Object.keys(room.emps).filter(id=>!safeId(id));
       if(badIds.length)console.warn('이상한 직원 id 무시',badIds);   // 화면·onclick 에 넣지 않는다
       DB.employees=Object.entries(room.emps).filter(([id])=>safeId(id))
@@ -4021,13 +4100,19 @@ async function cloudSync(){
         const l=local[id]||{};
         const mg={id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||''),duty:(e.duty||l.duty||'')}; // 전화번호·담당업무는 비어있지 않은 값 우선 (지워짐 방지)
+        const df=dEmps[id]; if(df)Object.keys(df).forEach(k=>{ mg[k]=df[k].v; });   // 아직 못 올린 이 기기 수정은 그 칸만 지킨다
         return mg;
       });
       // 이 기기에만 있는 직원은 버리지 않고 유지 + 클라우드에 올림
       const cloudIds=new Set(Object.keys(room.emps));
       const extras=Object.values(local).filter(e=>!cloudIds.has(e.id));
-      if(extras.length){ DB.employees.push(...extras); cloudPushRoster(); }
+      if(extras.length){ DB.employees.push(...extras); extras.forEach(e=>{ if(!dEmps[e.id])dirtyMark('emps',e.id,null,sanitizeEmp(e)); }); }
+      if(dirtyHas('emps'))cloudPushRoster();                                  // 못 올린 직원 정보는 지금 다시
       ensureMain();
+    }
+    // 명단(/emps)이 통째로 비어 있으면 — 지워졌다. 소유자 기기가 이 기기 명단 전원을 올려 복구한다(직원별 전체 레코드)
+    if(!(room.emps&&Object.keys(room.emps).length)&&cloudCfg().role==='admin'&&isOwnerDev()&&DB.employees.length){
+      DB.employees.forEach(e=>dirtyMark('emps',e.id,null,sanitizeEmp(e))); cloudPushRoster();
     }
     supMergeCloud(room.supplies); supBadge(); // 비품: 클라우드 우선 + 이 기기에서 만든 미전송분 올림
     // 관리자 전용 데이터 수신 (급여·주민번호·계좌·급여탭 수정값)
@@ -4042,6 +4127,12 @@ async function cloudSync(){
             e.rrn=p.rrn||e.rrn||''; e.bank=p.bank||e.bank||''; e.acct=p.acct||e.acct||'';
           });
           DB.overrides=mergeOv(DB.overrides,pv.overrides); // 급여탭 수정값: 클라우드 셀 우선, 로컬 전용 셀 유지
+          // 아직 못 올린 이 기기의 수정(월급·급여탭 칸)은 클라우드 옛 값이 덮지 못한다 — 덮이면 그 옛 값이 다시 올라갔다
+          const Dd=dirtyGet();
+          Object.entries(Dd.priv||{}).forEach(([id,f])=>{ const e=emp(id); if(e)Object.keys(f).forEach(k=>{ e[k]=f[k].v; }); });
+          Object.entries(Dd.ov||{}).forEach(([ym,m])=>Object.entries(m).forEach(([id,cells])=>Object.entries(cells).forEach(([k,x])=>{
+            DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; DB.overrides[ym][id][k]=x.v; })));
+          if(dirtyHas('priv')||dirtyHas('ov'))cloudPushPriv();                  // 못 올린 것은 지금 다시
         }
       } else if(isOwnerDev()){ cloudPushPriv(); } // 클라우드에 아직 없으면 소유자 기기만 최초 업로드 (키 자동 생성)
     }
@@ -4924,11 +5015,14 @@ function geoSaveRad(){
   if(!(v>=50&&v<=2000)){ toast('반경은 50~2000m 사이로 넣어 주세요'); return; }
   geoPut({rad:v}); toast('반경을 '+v+'m로 저장했습니다');
 }
-async function geoTestHere(){
-  const r=await checkGeo();
-  if(r.s==='skip'){ toast('위치 확인이 꺼져 있습니다'); return; }
-  if(r.s==='fail'){ toast('위치를 가져오지 못했습니다'); return; }
-  toast(r.s==='ok'?`회사에서 ${r.dist}m — 반경 안 ✓ (오차 ${r.acc}m)`:`회사에서 ${r.dist}m — 반경 밖 (오차 ${r.acc}m)`);
+async function geoTestHere(){   // 켜기 전에도 잴 수 있다 — 관리자 폰에서 먼저 시험(저장 없음, 직원에게 영향 없음)
+  const g=geoCfg();
+  if(!(g&&g.lat!=null&&g.lng!=null)){ toast('먼저 회사 위치를 저장해 주세요'); return; }
+  const p=await getPos();
+  if(!p||!p.coords){ toast('위치를 가져오지 못했습니다 — 폰 설정에서 이 앱(브라우저)의 위치 권한을 허용하고 다시 눌러 주세요'); return; }
+  const d=distM(g.lat,g.lng,p.coords.latitude,p.coords.longitude), acc=Math.round(p.coords.accuracy||0), rad=g.rad||GEO_RAD_DEF;
+  toast((d<=rad+acc?`회사에서 ${d}m — 반경 안 ✓ 정상 처리`:`회사에서 ${d}m — 반경 밖 (기록에 표시)`)
+    +` · 오차 ${acc}m · 반경 ${rad}m`+(geoOn()?'':' · 직원에게는 아직 꺼져 있음'));
 }
 function renderGeoCard(){
   const body=document.getElementById('geoBody'); if(!body)return;
@@ -4945,7 +5039,8 @@ function renderGeoCard(){
       <button class="btn ghost" style="flex:0 0 auto;padding:0 14px;" onclick="geoSaveRad()">저장</button>
     </div>
     <div class="muted" style="margin-top:4px;font-size:12px;">권장 200m. GPS는 실내에서 100m 넘게 틀어지므로 50m로 좁히면 회사에 있어도 밖으로 잡힙니다.</div>
-    ${set?'<button class="btn ghost wide" style="margin-top:10px;" onclick="geoTestHere()">🎯 지금 여기서 거리 재보기</button>':''}`;
+    ${set?'<button class="btn ghost wide" style="margin-top:10px;" onclick="geoTestHere()">🎯 지금 여기서 거리 재보기</button>'
+      +'<div class="muted" style="margin-top:4px;font-size:12px;">위 [위치 확인 사용]을 켜기 전에도 이 폰에서만 시험해 볼 수 있습니다(저장 안 함 · 직원에게 영향 없음).</div>':''}`;
 }
 /* ================== 폰 알림 (웹푸시) ==================
    앱이 꺼져 있어도 잠금화면에 알림이 뜬다. 추가 앱 설치 불필요.
