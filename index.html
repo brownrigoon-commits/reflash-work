@@ -755,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261113_163459'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261113_164117'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -912,6 +912,7 @@ function openPunch(id){
   const _c=cloudCfg();
   if(_c&&_c.role==='staff'&&_c.myEmpId&&id!==_c.myEmpId){toast('본인의 출퇴근만 기록할 수 있습니다');return;}
   punchEmpId=id; const e=emp(id), r=recOf(todayStr(),id);
+  { const gi=document.getElementById('punchGeo'); if(gi)gi.innerHTML=geoOkLine(id); }
   document.getElementById('punchName').textContent=e.name;
   /* 퇴근을 유예(10분)보다 일찍 누르면 누른 시각이 그대로 남고 조퇴(0.5일)가 공제된다.
      예전에는 조건 없이 '일찍/늦게 눌러도 정시로 기록됩니다' 라고만 적혀 있어서,
@@ -965,7 +966,7 @@ async function doPunch(kind){
   let hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
   // ── 위치 확인 (켜져 있을 때만, 누른 순간 1회) ──
   let geo={s:'skip'};
-  if(geoOn()){
+  if(geoOn()&&geoAllowed(punchEmpId)){   // 본인 폰·본인 출퇴근·동의한 경우만
     const bi=document.getElementById('btnIn'), bo=document.getElementById('btnOut'), gi=document.getElementById('punchGeo');
     if(bi)bi.disabled=true; if(bo)bo.disabled=true;
     if(gi)gi.innerHTML='<span class="muted">📍 위치 확인 중…</span>';
@@ -4081,6 +4082,11 @@ async function cloudSync(){
       Object.entries(up).forEach(([d,em])=>Object.keys(em).forEach(id=>queueRec(d,id)));
     }
     window._geo=safeGeoVal(room.geo)||window._geo||null;   // 회사 위치·반경 (모든 기기 공통 기준, 숫자만)
+    { const go={}; Object.entries((room.geoOk&&typeof room.geoOk==='object')?room.geoOk:{}).forEach(([id,x])=>{
+        if(safeId(id)&&x&&typeof x.ok==='boolean'&&typeof x.ts==='number')go[id]={ok:x.ok,ts:x.ts,v:Number(x.v)||1}; });
+      const me=myEmpId(), mine=me?geoOkOf(me):null;                       // 위치 확인 동의 (직원별)
+      if(me&&mine&&(!go[me]||go[me].ts<mine.ts)){ go[me]=mine; cfetch('/geoOk/'+me,{method:'PUT',body:JSON.stringify(mine)}).catch(()=>{}); }
+      window._geoOk=go; }
     { // 공휴일 추가·제외 (모든 기기 + 급여대장 스크립트가 같은 표를 쓴다)
       const hc=room.holidays, o={add:{},off:{}};
       if(hc&&typeof hc==='object'){
@@ -5015,6 +5021,57 @@ function geoSaveRad(){
   if(!(v>=50&&v<=2000)){ toast('반경은 50~2000m 사이로 넣어 주세요'); return; }
   geoPut({rad:v}); toast('반경을 '+v+'m로 저장했습니다');
 }
+/* ── 위치 확인 동의 (앱에서 묻고 [확인] = 동의로 기록) ── */
+const GEO_OK_VER=1;
+function geoOkText(){
+  const g=geoCfg()||{}, rad=g.rad||GEO_RAD_DEF;
+  return '📍 출퇴근 위치 확인 동의\n\n'
+   +'회사는 출퇴근 장소를 확인하기 위해, 출근·퇴근 버튼을 누르는 그 순간에만 이 폰의 위치를 1회 확인합니다.\n\n'
+   +'· 저장하는 것: 회사에서 '+rad+'m 밖에서 찍었을 때 회사까지의 거리(m)만 — 위치 좌표는 저장하지 않습니다\n'
+   +'· 평소에는 위치를 보지 않고, 근무 중 이동도 기록하지 않습니다\n'
+   +'· 보관: 근태 기록과 함께 (퇴사 후 3년)\n'
+   +'· 동의하지 않아도 불이익은 없습니다 — 위치 확인 없이 출퇴근이 기록됩니다\n'
+   +'· 출퇴근 창에서 언제든 동의를 바꾸거나 철회할 수 있습니다\n\n'
+   +'동의하시면 [확인], 동의하지 않으시면 [취소]를 눌러 주세요.';
+}
+function geoOkOf(id){
+  let x=(window._geoOk||{})[id];
+  if(!x){ try{ x=JSON.parse(localStorage.getItem('riwork_geook_'+id)||'null'); }catch(e){ x=null; } }
+  return (x&&typeof x.ok==='boolean'&&typeof x.ts==='number')?x:null;
+}
+function geoOkSet(id,ok){
+  const x={ok:!!ok,ts:Date.now(),v:GEO_OK_VER};
+  window._geoOk=Object.assign({},window._geoOk||{},{[id]:x});
+  try{ localStorage.setItem('riwork_geook_'+id,JSON.stringify(x)); }catch(e){}
+  if(cloudOn())cfetch('/geoOk/'+id,{method:'PUT',body:JSON.stringify(x)}).catch(()=>{});
+  return x;
+}
+/* 이 출퇴근에서 위치를 봐도 되는가 — 본인 폰에서 본인 것을 찍고, 동의했을 때만. 처음이면 묻는다 */
+function geoAllowed(id){
+  if(!(isStaffDev()&&myEmpId()===id))return false;
+  let x=geoOkOf(id);
+  if(!x)x=geoOkSet(id,confirm(geoOkText()));
+  return !!x.ok;
+}
+function geoOkChange(){
+  const id=myEmpId(); if(!id)return;
+  const x=geoOkOf(id);
+  if(x&&x.ok){ if(confirm('위치 확인 동의를 철회할까요?\n철회하면 위치 확인 없이 출퇴근이 기록됩니다.')){ geoOkSet(id,false); toast('동의를 철회했습니다'); } }
+  else{ const ok=confirm(geoOkText()); geoOkSet(id,ok); toast(ok?'위치 확인에 동의했습니다':'동의하지 않았습니다 — 위치 확인 없이 기록됩니다'); }
+  openPunch(id);
+}
+function geoOkLine(id){   // 출퇴근 창: 내 동의 상태 + 바꾸기
+  if(!(geoOn()&&isStaffDev()&&myEmpId()===id))return '';
+  const x=geoOkOf(id), st=x?(x.ok?'동의함':'동의 안 함'):'아직 답하지 않음';
+  return `<span class="muted">📍 위치 확인: ${st} · </span><a href="javascript:void(0)" onclick="geoOkChange()">바꾸기</a>`;
+}
+function geoConsentHtml(){   // 관리자 설정: 직원별 동의 현황
+  const rows=activeEmps().map(e=>{ const x=geoOkOf(e.id);
+    const st=x?(x.ok?'동의 ('+fmtD(new Date(x.ts)).slice(5).replace('-','.')+')':'동의 안 함'):'미응답';
+    return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--line);"><span>${esc(e.name)}</span><span class="muted">${st}</span></div>`; }).join('');
+  return `<div style="margin-top:14px;font-weight:700;">직원 동의 현황</div>`
+   +`<div class="muted" style="font-size:12px;margin:2px 0 6px;">위 [위치 확인 사용]을 켜면, 직원이 본인 폰에서 처음 출퇴근을 찍을 때 앱이 동의를 묻습니다. [확인]=동의로 기록되고, 동의한 직원만 위치를 확인합니다.</div>`+rows;
+}
 async function geoTestHere(){   // 켜기 전에도 잴 수 있다 — 관리자 폰에서 먼저 시험(저장 없음, 직원에게 영향 없음)
   const g=geoCfg();
   if(!(g&&g.lat!=null&&g.lng!=null)){ toast('먼저 회사 위치를 저장해 주세요'); return; }
@@ -5041,6 +5098,7 @@ function renderGeoCard(){
     <div class="muted" style="margin-top:4px;font-size:12px;">권장 200m. GPS는 실내에서 100m 넘게 틀어지므로 50m로 좁히면 회사에 있어도 밖으로 잡힙니다.</div>
     ${set?'<button class="btn ghost wide" style="margin-top:10px;" onclick="geoTestHere()">🎯 지금 여기서 거리 재보기</button>'
       +'<div class="muted" style="margin-top:4px;font-size:12px;">위 [위치 확인 사용]을 켜기 전에도 이 폰에서만 시험해 볼 수 있습니다(저장 안 함 · 직원에게 영향 없음).</div>':''}`;
+  body.innerHTML+=geoConsentHtml();
 }
 /* ================== 폰 알림 (웹푸시) ==================
    앱이 꺼져 있어도 잠금화면에 알림이 뜬다. 추가 앱 설치 불필요.
