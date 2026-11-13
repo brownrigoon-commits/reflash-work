@@ -488,7 +488,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <div class="card">
       <h3 style="font-size:15px;margin-bottom:10px;">📧 월말 급여대장 자동 수신 (검토용)</h3>
       <label class="f" style="margin-top:0;">받아볼 이메일 (대표님 메일)</label>
-      <input id="setTaxMail" placeholder="예: brown.rigoon@gmail.com">
+      <input id="setTaxMail" placeholder="예: tax@example.com">
       <button class="btn p wide" style="margin-top:10px;" onclick="saveTaxMail()">이메일 저장</button>
       <div style="border-top:1px solid var(--line);margin:14px 0;"></div>
       <div id="bkStatus" class="muted" style="margin-bottom:10px;">자동백업 폴더가 연결되지 않았습니다.</div>
@@ -556,7 +556,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <option value="freelance">사업소득자 (3.3% 프리랜서)</option>
     <option value="daily">일용직 (시급제)</option>
   </select>
-  <div id="fWrapSalary"><label class="f" id="fSalaryLabel">월급여 (세전, 원) *</label><input id="fSalary" inputmode="numeric" placeholder="2,300,000"></div>
+  <div id="fWrapSalary"><label class="f" id="fSalaryLabel">월급여 (세전, 원) *</label><input id="fSalary" inputmode="numeric" placeholder="2,000,000"></div>
   <div id="fWrapHourly" style="display:none;">
     <label class="f">시급 (원) *</label><input id="fHourly" inputmode="numeric" placeholder="11,000">
     <label class="f">1일 근로시간 (h)</label><input id="fDailyH" inputmode="numeric" value="8">
@@ -578,6 +578,10 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <option value="subadmin">부관리자 — 직원 초대·근태 관리 (급여·개인정보 열람 불가)</option>
     <option value="admin">관리자 — 급여·개인정보까지 전체 공유 (설정 제외)</option>
   </select>
+  <label class="f">임원 <span style="font-weight:400;">(메인 관리자만 변경 가능)</span></label>
+  <label style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;cursor:pointer;">
+    <input type="checkbox" id="fExec" style="width:20px;height:20px;"> 임원입니다 — 근로기준법 연차 자동 계산에서 뺍니다
+  </label>
   <label class="f">휴대폰 번호 <span style="font-weight:400;">(직원 초대 · 본인인증용)</span></label><input id="fPhone" inputmode="numeric" placeholder="010-0000-0000">
   <div id="fWrapPriv">
   <label class="f">주민등록번호 <span style="font-weight:400;">(급여대장용 · 선택)</span></label><input id="fRrn" placeholder="000000-0000000">
@@ -751,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261112_015016'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261113_140254'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -911,14 +915,18 @@ function openPunch(id){
   document.getElementById('punchName').textContent=e.name;
   /* 퇴근을 유예(10분)보다 일찍 누르면 누른 시각이 그대로 남고 조퇴(0.5일)가 공제된다.
      예전에는 조건 없이 '일찍/늦게 눌러도 정시로 기록됩니다' 라고만 적혀 있어서,
-     직원이 괜찮은 줄 알고 눌렀다 — 1건당 통상시급×4시간이 깎인다(월 680만원이면 130,144원). */
+     직원이 괜찮은 줄 알고 눌렀다 — 1건당 통상시급×4시간이 깎인다(월 300만원이면 57,416원). */
   {
     const _hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
     let _tip;
     if(!isWorkday(e,new Date()))_tip='오늘은 근무일이 아닙니다 — 찍으면 휴일근무로 기록됩니다';
-    else if(r&&r.in&&!r.out)
-      _tip=`퇴근은 ${_hm(Math.max(0,toMin(e.schedule.end)-GRACE_MIN))} 이후에 누르면 ${e.schedule.end} 정시로 기록됩니다`
-           +` · 그보다 일찍 누르면 누른 시각 그대로 남고 조퇴(0.5일)가 공제됩니다`;
+    else if(r&&r.in&&!r.out){
+      const _lv=leaveOn(todayStr(),e.id);
+      _tip=(_lv&&_lv.t==='pm')?'오늘은 오후 반차입니다 — 일찍 퇴근해도 조퇴가 아닙니다'
+        :(_lv&&_lv.t==='full')?'오늘은 연차가 확정된 날입니다 — 일찍 퇴근해도 조퇴가 아닙니다'
+        :`퇴근은 ${_hm(Math.max(0,toMin(e.schedule.end)-GRACE_MIN))} 이후에 누르면 ${e.schedule.end} 정시로 기록됩니다`
+         +` · 그보다 일찍 누르면 누른 시각 그대로 남고 ${earlyCost(e,true)}`;
+    }
     else if(!r||!r.in)
       _tip=`출근은 ${e.schedule.start}~${_hm(toMin(e.schedule.start)+GRACE_MIN)} 사이에 누르면 정시 출근입니다`;
     else _tip='오늘은 출근·퇴근이 모두 기록되었습니다';
@@ -942,6 +950,15 @@ function openPunch(id){
     else bot.style.display='none';
   }
   tick(); openM('mdPunch');
+}
+/* 일찍 퇴근하면 실제로 생기는 일 — 고용형태에 맞게. 예전에는 3.3%·일용직에게도 '조퇴 0.5일·약 N원 공제'라고 했다.
+   (정직원 조퇴 1건 = 통상시급×4시간 공제 / 3.3% 는 정액이라 공제 없음 / 일용직은 일한 시간만큼) */
+function earlyCost(e,short){
+  if(e.type==='freelance')return short?'조퇴로 기록됩니다(3.3%는 공제 없음)':'조퇴로 기록되지만 3.3% 용역비에서 공제되지는 않습니다';
+  if(e.type==='daily')return short?'일한 시간만큼 계산됩니다':'일한 시간만큼만 계산됩니다';
+  if(short)return '조퇴(0.5일)가 공제됩니다';
+  const w=Math.round(Math.max(0,Number(e.salary)||0)/209);
+  return `조퇴 0.5일로 잡혀${w?` 약 ${comma(Math.round(w*8*0.5))}원이`:' 급여가'} 공제됩니다`;
 }
 async function doPunch(kind){
   const ds=todayStr(), n=new Date(), e=emp(punchEmpId);
@@ -968,7 +985,9 @@ async function doPunch(kind){
     const late=toMin(hm)-toMin(e.schedule.start);
     if(late<=GRACE_MIN)hm=e.schedule.start;
     if(r.off){ delete r.off; delete r.manual; } // 취소/결근 표식 위에 다시 출근하는 경우 정리
-    r.in=hm; window._askLate=(late>GRACE_MIN)?hm:null;   // 유예 넘겼으면 아래에서 신고 받기
+    // 유예 넘겼으면 아래에서 지각 신고 받기 — 단 휴일·오전 반차·종일 연차 날은 늦게 오는 게 지각이 아니다
+    const _lvIn=leaveOn(ds,e.id), _late=late>GRACE_MIN&&isWorkday(e,new Date(ds+'T00:00:00'))&&!(_lvIn&&(_lvIn.t==='am'||_lvIn.t==='full'));
+    r.in=hm; window._askLate=_late?hm:null;
     toast(`${e.name}님 출근 완료! (${hm})`);
   }
   else{
@@ -985,10 +1004,10 @@ async function doPunch(kind){
     else{
       /* 유예를 넘겨 일찍 누르면 그날이 조퇴로 잡혀 0.5일이 공제된다 —
          누르기 전에 금액까지 보여 주고 한 번 묻는다. 예전에는 아무 말 없이 기록됐다. */
-      const _w=Math.round(Math.max(0,Number(e.salary)||0)/209);
-      const _amt=_w?` 약 ${comma(Math.round(_w*8*0.5))}원이`:' 급여가';
-      if(!confirm(`${e.name}님, 퇴근시간(${e.schedule.end})보다 이릅니다.\n\n`
-        +`${hm} 으로 기록되고 **조퇴 0.5일**로 잡혀${_amt} 공제됩니다.\n`
+      const _lv=leaveOn(ds,e.id);
+      // 휴일·오후 반차·종일 연차(반차 2건 포함) 날은 조퇴가 아니다 — 묻지 않는다
+      if(isWorkday(e,new Date(ds+'T00:00:00'))&&!(_lv&&(_lv.t==='pm'||_lv.t==='full'))&&!confirm(`${e.name}님, 퇴근시간(${e.schedule.end})보다 이릅니다.\n\n`
+        +`${hm} 으로 기록되고 ${earlyCost(e,false)}.\n`
         +`미리 말씀하신 조퇴라면 [연차] 탭의 [✋ 그 밖의 신청]에 올려 주세요.\n\n`
         +`그래도 지금 퇴근으로 기록할까요?`))return;
     }
@@ -1179,10 +1198,13 @@ function isHoliday(ds){ return !!holName(ds); }
 function holYearKnown(y){ return HOL_YEARS.includes(String(y)); }
 /* ── 연차: DB.leaves = {grants:{'2026':{empId:일수}}, items:{id:{e,d,t:'full'|'am'|'pm',memo,del}}} ── */
 const LEAVE_NM={full:'연차',am:'오전 반차',pm:'오후 반차'};
-/* 연차 제도 시행일 — 이 날부터 발생을 센다.
-   회사가 2026년 11월에 연차를 시작했다. 그 전 기간은 세지 않는다(대표 결정 2026-11-09).
-   바꾸려면 이 한 줄만 고치고 다시 배포하면 된다.
-   '발생'은 급여 계산에 쓰이지 않는다(쓰는 것은 '사용' 뿐) — 그래서 앱에만 있으면 된다. */
+/* 연차 규정이 적용되기 시작한 날 = 이 회사가 **상시 5인 이상이 된 날**.
+   근로기준법 제60조(연차)는 상시 5명 이상 사업장에만 적용된다(제11조·시행령 별표 1).
+   대표 확인(2026-11-13): 5인 이상이 된 것은 2026-11-01 부터다.
+   고용노동부 해석(임금근로시간과-247, 2022.1.27.)은 이런 사업장의 계속근로기간을
+   '5인 이상이 된 시점'부터 세라고 한다 — 그래서 그 전 기간은 세지 않는다.
+   ⚠️ 이 날짜는 사실관계다. 임의로 바꾸면 법정보다 적게(또는 많게) 주게 된다.
+      회사PC 의 급여대장_생성_메일발송.py 에도 같은 날짜가 있다(LV_START) — 둘은 같아야 한다. */
 const LV_START='2026-11-01';
 /* 연차 말고도 직원이 알려야 하는 상황들. 같은 서랍(leaves.items)에 k 꼬리표를 달아 담는다.
    **k 가 있으면 연차가 아니다** — leaveLive() 가 걸러내므로 급여·결근 계산에 들어가지 않는다.
@@ -1233,7 +1255,7 @@ function safeEmpVal(e){
     joinDate:safeDate(e.joinDate)?e.joinDate:'2000-01-01',
     leaveDate:safeDate(e.leaveDate)?e.leaveDate:null,
     role:['admin','subadmin','staff'].includes(e.role)?e.role:'staff',
-    main:!!e.main, autoPunch:!!e.autoPunch,
+    main:!!e.main, exec:e.exec===true, autoPunch:!!e.autoPunch,   // exec: 임원 (참일 때만 — 회사PC load_db 와 같은 규칙)
     phone:safeTxt(e.phone,20), duty:safeTxt(e.duty,40),
     schedule:{
       days:Array.isArray(s.days)?s.days.filter(d=>Number.isInteger(d)&&d>=0&&d<=6):[1,2,3,4,5],
@@ -1280,11 +1302,14 @@ function esc(s){ // 클라우드에서 온 글자(사유·이름 등)를 화면�
 function lvClean(id,x){
   if(!(safeId(id)&&x&&typeof x==='object'&&!Array.isArray(x)))return null;
   if(!(safeId(x.e)&&safeDate(x.d)))return null;
-  if(x.t!=null&&!LEAVE_NM[x.t])return null;                    // 모르는 연차 종류
-  if(x.k!=null&&!REQ_NM[x.k])delete x.k;                       // 모르는 신청 종류는 떼어 낸다
+  // 종류는 '표에 정말 있는 이름'인지로 본다 — 객체 조회만 하면 'toString'·'constructor' 같은 값이 통과했다(재검증)
+  const isT=v=>typeof v==='string'&&Object.prototype.hasOwnProperty.call(LEAVE_NM,v);
+  const isK=v=>typeof v==='string'&&Object.prototype.hasOwnProperty.call(REQ_NM,v);
+  if(x.t!=null&&!isT(x.t))return null;                    // 모르는 연차 종류
+  if(x.k!=null&&!isK(x.k))delete x.k;                       // 모르는 신청 종류는 떼어 낸다
   /* 종류가 아예 없으면 받지 않는다 — 보안규칙과 같은 조건(t 또는 k).
      예전에는 종류 없는 항목이 leaveDays 에서 '반차 0.5일'로 세어져 연차가 깎였다. */
-  if(!LEAVE_NM[x.t]&&!REQ_NM[x.k])return null;
+  if(!isT(x.t)&&!isK(x.k))return null;
   ['t1','t2'].forEach(f=>{ if(x[f]!=null&&!safeHM(x[f]))delete x[f]; });
   if(x.memo!=null)x.memo=safeTxt(x.memo,200);
   if(x.st!=null&&x.st!=='w'&&x.st!=='x')delete x.st;
@@ -1299,7 +1324,7 @@ function leaveOn(ds,empId){ // 그날 확정된 연차 — 없으면 null
   const it=leavesDB().items, hit=[];
   for(const k in it){ const x=it[k]; if(leaveLive(x)&&x.e===empId&&x.d===ds)hit.push(x); }
   if(!hit.length)return null;
-  // 오전 반차 + 오후 반차 = 종일. 예전에는 먼저 찾은 1건만 보고 조퇴를 물렸다(44,020원).
+  // 오전 반차 + 오후 반차 = 종일. 예전에는 먼저 찾은 1건만 보고 조퇴를 물렸다(통상시급×4시간).
   if(hit.length>1&&hit.reduce((s,x)=>s+leaveDays(x),0)>=1)return {e:empId,d:ds,t:'full',memo:'반차 2건 합산'};
   return hit[0];
 }
@@ -1364,7 +1389,7 @@ function weekOwnsMonth(mon,y,m){ // 이 주(월요일 mon)가 y년 m월 소유�
    어제까지는 당연히 판정한다. **오늘**은 그 직원의 근무 종료 1시간 뒤부터 판정한다.
    예전에는 앱이 '어제까지'만, 급여대장 스크립트는 '18시 넘으면 오늘까지'로 달라서
    말일(예: 2026-11-30 월) 19:30 실행에서 두 숫자가 어긋났고,
-   더 나쁘게는 그 말일의 결근이 어느 달에서도 공제되지 않고 사라졌다(1인 176,080원). */
+   더 나쁘게는 그 말일의 결근이 어느 달에서도 공제되지 않고 사라졌다(1인 통상시급×16시간). */
 function judgeable(e,ds,today){
   if(ds<today)return true;
   if(ds>today)return false;
@@ -1454,7 +1479,7 @@ function autoPunchTick(){
   activeEmps().forEach(e=>{
     if(!e.autoPunch)return;
     for(let k=7;k>=0;k--){
-      const d=new Date(now); d.setDate(d.getDate()-k);
+      const d=new Date(tds+'T00:00:00'); d.setDate(d.getDate()-k);   // '오늘'은 todayStr() 기준 — 앱 전체와 같은 날짜
       if(!isWorkday(e,d))continue;
       const ds=fmtD(d);
       if(recOf(ds,e.id))continue;            // 이미 기록(수동·끔 포함) 있으면 유지
@@ -2167,7 +2192,7 @@ function renderEmpList(){
   document.getElementById('cntLeft').textContent=left.length+'명';
   const mk=(e)=>{
     const months=Math.max(0,Math.floor((new Date(e.leaveDate||todayStr())-new Date(e.joinDate))/(30.44*864e5)));
-    const badge=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
+    const badge=e.type==='regular'?(e.exec?'<span class="badge b-reg">임원</span>':'<span class="badge b-reg">정직원</span>'):e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
     const admin=e.main?' <span class="badge b-admin">메인관리자</span>':e.role==='admin'?' <span class="badge b-admin">관리자</span>':e.role==='subadmin'?' <span class="badge b-admin">부관리자</span>':'';
     const duty=e.duty?` <span class="badge b-duty">${esc(e.duty)}</span>`:'';
     const off=e.leaveDate?' <span class="badge b-off">퇴사</span>':'';
@@ -2196,6 +2221,8 @@ function openEmpForm(id){
   document.getElementById('fEnd').value=e?e.schedule.end:'18:00';
   document.getElementById('fAuto').checked=e?!!e.autoPunch:false;
   document.getElementById('fRole').value=e?(e.main?'admin':(e.role||'staff')):'staff';
+  document.getElementById('fExec').checked=e?!!e.exec:false;
+  document.getElementById('fExec').disabled=!isOwnerDev();   // 연차 대상 여부는 메인 관리자만 정한다
   document.getElementById('fRole').disabled=!isOwnerDev()||!!(e&&e.main); // 권한은 메인 관리자만 변경, 메인관리자 본인은 고정
   document.getElementById('fPhone').value=e?(e.phone||''):'';
   document.getElementById('fRrn').value=e?(e.rrn||''):'';
@@ -2249,6 +2276,7 @@ function saveEmp(){
     if(t!=='daily'&&!o.salary){toast('급여를 입력해 주세요');return;}
     if(t==='daily'&&!o.hourly){toast('시급을 입력해 주세요');return;}
   }
+  if(isOwnerDev())o.exec=document.getElementById('fExec').checked;   // 임원 — 연차 자동 계산 제외
   if(isOwnerDev())o.role=document.getElementById('fRole').value; // 권한(직원/부관리자/관리자)은 메인 관리자만 변경
   if(editEmpId&&emp(editEmpId).main)o.role='admin'; // 메인관리자는 권한 강등 불가 (영구)
   let savedId=editEmpId;
@@ -2270,7 +2298,7 @@ function ov(ym,id){ return (DB.overrides[ym]||{})[id]||{}; }
 function setOv(ym,id,k,v){ DB.overrides[ym]=DB.overrides[ym]||{}; DB.overrides[ym][id]=DB.overrides[ym][id]||{}; DB.overrides[ym][id][k]=v; save(); schedulePrivPush(); }
 function floor10(n){ return Math.floor(n/10)*10; }
 /* 그 달에 재직한 역일 수 / 그 달 총 역일 수.
-   월중 입·퇴사자에게 한 달치를 전액 주던 것을 막는다(박은성 2026-10: 519,355원 차이). */
+   월중 입·퇴사자에게 한 달치를 전액 주던 것을 막는다(2026-10 실측: 월중 입사자가 한 달치 전액으로 계산됐다). */
 function workedDaysInMonth(e,y,m){
   const total=new Date(y,m+1,0).getDate();
   // 날짜가 ISO 모양이 아니면 Invalid Date 가 되어 일할계산이 조용히 안 걸렸다 → 아예 무시한다
@@ -2285,7 +2313,7 @@ function workedDaysInMonth(e,y,m){
 function calcRegular(e,y,m){
   const ym=`${y}-${String(m+1).padStart(2,'0')}`;
   const agg=monthAgg(e,y,m), o=ov(ym,e.id);
-  // 급여탭에서 손으로 넣은 값은 음수가 될 수 있었다 → 월급보다 많이 나갔다(absentW:-3 → +264,120원)
+  // 급여탭에서 손으로 넣은 값은 음수가 될 수 있었다 → 월급보다 많이 나갔다(absentW:-3 → +통상시급×24시간)
   const nn=v=>Math.max(0,Number(v)||0);
   const absent=o.absent!=null?nn(o.absent):agg.absent;
   const early=o.early!=null?nn(o.early):agg.earlyCnt;
@@ -2295,7 +2323,7 @@ function calcRegular(e,y,m){
   const base=wage*174, jh=Math.round(wage*35);   // 209시간 = 기본급 174 + 주휴 35 (세무사무실 대장과 같은 식)
   const dedDays=absent+early*0.5;
   const dedWork=Math.round(wage*8*dedDays);
-  // 주휴 공제는 소정근로일 비례. 주 2일 근무자에게 8시간 전액을 물리면 과공제다(52,824원).
+  // 주휴 공제는 소정근로일 비례. 주 2일 근무자에게 8시간 전액을 물리면 과공제다(1주 통상시급×4.8시간).
   const wk=(e.schedule&&e.schedule.days&&e.schedule.days.length)||5;
   const dedJh=Math.round(wage*8*Math.min(1,wk/5)*absentW);
   const wd=workedDaysInMonth(e,y,m);
@@ -2426,89 +2454,187 @@ function renderPay(){
 }
 
 /* ================== 연차 관리 ==================
-   발생 일수: 근로기준법 기준 회계연도(1~12월) 자동 추정 → 관리자가 숫자를 눌러 고칠 수 있음(grants에 저장)
-   사용: 등록한 연차·반차 합계. 삭제는 표식(del)으로 남겨 다른 기기에서 되살아나지 않게 함 */
-let leaveYear=new Date().getFullYear();
-function leaveMove(d){ leaveYear+=d; renderLeave(); }
-function legalLeave(e,Y){
-  if(e.type!=='regular'||!e.joinDate)return 0;           // 3.3%·일용직은 기본 0 (필요하면 직접 입력)
-  /* 시행일 이전은 세지 않는다 — 시행일에 입사한 것처럼 본다 (LV_START 설명 참고) */
-  const jd=e.joinDate>LV_START?e.joinDate:LV_START;
-  const j=new Date(jd+'T00:00:00'), jan1=new Date(Y,0,1), dec31=new Date(Y,11,31);
-  /* '오늘'은 앱 전체가 쓰는 todayStr() 로 본다. 예전에는 여기만 기기 시계를 직접 봐서
-     다른 계산과 기준이 달랐고, 시험으로 확인할 수도 없었다. */
-  const t=new Date(todayStr()+'T00:00:00');
-  let until=(Y===t.getFullYear())?t:dec31;               // 올해는 오늘까지 생긴 것만 (월차는 한 달을 채운 다음 날 생김)
-  /* 퇴사한 뒤로는 더 생기지 않는다. 예전에는 '오늘'까지만 깎고 '퇴사일'까지는 안 깎아서,
-     3월에 그만둔 사람의 연차를 12월에 열면 늘어나 있었다 — 미사용연차수당을 그만큼 더 주게 된다.
-     연차 시행일보다 먼저 그만둔 분도 이 한 줄로 0일이 된다. */
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(e.leaveDate||''))){
-    const ld=new Date(e.leaveDate+'T00:00:00');
-    if(ld<until)until=ld;
-  }
-  if(j>until)return 0;
-  const monthsDone=(from,to)=>{ let k=0; while(k<11&&new Date(from.getFullYear(),from.getMonth()+k+1,from.getDate())<=to)k++; return k; };
-  if(j>=jan1)return monthsDone(j,until);                 // 올해 입사: 1개월 개근마다 1일 (최대 11일)
-  let yrs=Y-j.getFullYear(); if(new Date(Y,j.getMonth(),j.getDate())>jan1)yrs--;
-  if(yrs<1){                                              // 작년 입사: 비례 연차 + 남은 월차
-    const prevEnd=new Date(Y-1,11,31);
-    const prop=15*((prevEnd-j)/864e5+1)/365;
-    const left=monthsDone(j,until)-monthsDone(j,prevEnd); // 입사 1년이 되기 전 올해(오늘까지) 생긴 월차
-    return Math.round((prop+left)*2)/2;
-  }
-  return Math.min(25,15+Math.floor((yrs-1)/2));           // 1년 이상: 15일 + 2년마다 1일 (최대 25일)
+   ■ 기준 — 직원마다 **연차 기산일** = 입사일과 LV_START(상시 5인 이상이 된 날) 중 늦은 날.
+     기산일부터 1년 단위가 그 직원의 '연차 기간'이다 (k=0 첫 1년, k=1 둘째 해 …).
+       k=0  : 1개월 개근마다 그다음 날 1일 (최대 11일)        — 제60조 제2항
+       k>=1 : 15일, 3년 이상이면 2년마다 1일 가산 (최대 25일)  — 제60조 제1항·제4항
+     회계연도(1~12월)로 묶지 않는다. 묶으면 15일이 생기는 날이 밀리고(2027-11-01 → 2028-01-01)
+     비례 계산과 퇴직 시 재정산이 따라붙는다. 기산일 기준은 법정 원칙 그대로라 정산할 것이 없다.
+   ■ 발생 일수는 자동 계산한 추정치다. 개근·출근율 80% 여부는 보지 않는다(기록 누락을 결근으로
+     오인해 연차를 깎는 쪽이 더 위험하다) — 관리자가 숫자를 눌러 고칠 수 있다.
+     고친 값은 grants[그 기간이 시작한 연도][직원] 에 저장된다.
+   ■ 사용: 확정된 연차·반차 합계. 삭제는 표식(del)으로 남겨 다른 기기에서 되살아나지 않게 한다. */
+let lvView=0;                       // 0 = 지금 속한 연차 기간, -1 = 바로 전 기간, +1 = 다음 기간
+function lvBase(e){ return (safeDate(e.joinDate)&&e.joinDate>LV_START)?e.joinDate:LV_START; }
+/* 기산일에서 n개월 뒤 '새 구간이 시작하는 날'.
+   같은 날짜가 없는 달(1/31 → 2월, 2/29 → 평년)은 그 달 말일에 구간이 끝나므로(민법 제160조)
+   다음 달 1일이 시작일이다. JS 의 Date 넘침(1/31+1개월 = 3/3)에 맡기면 이틀 늦어진다. */
+function lvShift(ds,n){
+  const y=+ds.slice(0,4), mo=+ds.slice(5,7)-1, d=+ds.slice(8,10);
+  const t=new Date(y,mo+n,1), dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();
+  return fmtD(d<=dim?new Date(t.getFullYear(),t.getMonth(),d):new Date(t.getFullYear(),t.getMonth()+1,1));
 }
-function leaveGrant(e,Y){ const g=(leavesDB().grants[Y]||{})[e.id]; return g!=null?g:legalLeave(e,Y); }
-function leaveItemsOf(Y,empId){
-  return Object.entries(leavesDB().items).filter(([id,x])=>leaveLive(x)&&String(x.d).slice(0,4)===String(Y)&&(!empId||x.e===empId))
+function lvPrevDay(ds){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()-1); return fmtD(d); }
+function lvPeriod(e,k){             // k<0 : 연차 규정이 적용되기 전(기산일 이전)
+  const b=lvBase(e);
+  if(k<0)return {k:-1,from:'',to:lvPrevDay(b)};
+  return {k:k,from:lvShift(b,12*k),to:lvPrevDay(lvShift(b,12*(k+1)))};
+}
+function lvPeriodOf(e,ds){          // 그 날짜가 속한 연차 기간 번호 (기산일 전이면 -1)
+  const b=lvBase(e);
+  if(!safeDate(ds)||ds<b)return -1;
+  let k=Math.max(0,(+ds.slice(0,4))-(+b.slice(0,4))-1);
+  while(k<200&&lvShift(b,12*(k+1))<=ds)k++;
+  return k;
+}
+function lvCur(e){ return lvPeriodOf(e,todayStr()); }
+function lvInPeriod(p,ds){ return safeDate(ds)&&(!p.from||ds>=p.from)&&ds<=p.to; }
+function lvDot(ds){ return String(ds).replace(/-/g,'.'); }
+function leaveMove(d){
+  let top=0; DB.employees.forEach(e=>{ top=Math.max(top,lvCur(e)); });
+  lvView=Math.max(-(top+1),Math.min(2,lvView+d));
+  renderLeave();
+}
+/* 그 연차 기간에 '기준일까지' 생긴 법정 연차 일수.
+   asOf 를 안 주면 오늘. 퇴사한 뒤로는 더 생기지 않는다(퇴사일이 마지막 근무일).
+   — 1개월·1년을 채운 '다음 날' 재직해야 생긴다(대법원 2021.10.14. 2021다227100 취지):
+     11/1~11/30 일하고 11/30 에 그만두면 12/1 의 1일은 생기지 않는다. */
+function legalLeave(e,k,asOf){
+  if(e.type!=='regular'||e.exec||!safeDate(e.joinDate))return 0;   // 3.3%·일용직·임원은 기본 0 (필요하면 직접 입력)
+  if(k<0)return 0;                                          // 연차 규정 적용 전
+  let until=safeDate(asOf)?asOf:todayStr();
+  if(safeDate(e.leaveDate)&&e.leaveDate<until)until=e.leaveDate;
+  const b=lvBase(e);
+  if(until<lvShift(b,12*k))return 0;                        // 그 기간이 아직 시작 전
+  if(k===0){ let n=0; while(n<11&&lvShift(b,n+1)<=until)n++; return n; }   // 1개월마다 1일, 최대 11일
+  return Math.min(25,15+Math.floor((k-1)/2));               // 15일 + 2년마다 1일 (최대 25일)
+}
+function lvGrantKey(e,k){ return lvPeriod(e,k).from.slice(0,4); }   // 수동 발생일수 저장 자리 = 기간 시작 연도
+/* 관리자가 손으로 넣은 발생 일수 — 그 연차 기간의 '적용 시작일 → 값' 기록. 값은 일수 또는 'auto'(그날부터 자동 계산).
+   grants[기간 시작 연도][직원] = {'2027-06-01':5, '2027-08-05':6, '2027-09-01':'auto'}
+   · 날짜마다 그 날짜 이전의 가장 늦은 기록을 쓴다 — 다시 고치거나 비워도 이미 지난 달 정산은 바뀌지 않는다.
+   · 첫 1년(k=0)은 '그 값 + 그 뒤 생긴 1일씩' — 결근한 달을 빼도 이후 월 발생이 멈추지 않는다.
+   · 숫자만 있는 옛 값은 그 기간 전체 고정값으로 읽는다.
+   (2026-11-13 감사·재검증. 회사PC lv_manual_recs 와 같은 규칙) */
+function lvManualRecs(e,k){
+  if(k<0)return [];
+  const g=(leavesDB().grants[lvGrantKey(e,k)]||{})[e.id];
+  if(typeof g==='number')return (isFinite(g)&&g>=0)?[{at:lvPeriod(e,k).from,v:g,abs:true}]:[];
+  if(!g||typeof g!=='object'||Array.isArray(g))return [];
+  return Object.keys(g).filter(d=>safeDate(d)).sort()
+    .map(d=>({at:d,v:g[d]})).filter(r=>r.v==='auto'||(typeof r.v==='number'&&isFinite(r.v)&&r.v>=0));
+}
+function lvManualAt(e,k,d){ let hit=null; lvManualRecs(e,k).forEach(r=>{ if(r.at<=d)hit=r; }); return hit; }
+function lvManual(e,k,asOf){   // 그 날짜에 적용 중인 수동 값 (없거나 '자동'이면 null). asOf 없으면 오늘
+  const r=lvManualAt(e,k,safeDate(asOf)?asOf:todayStr());
+  return (r&&r.v!=='auto')?r.v:null;
+}
+function leaveGrant(e,k,asOf){
+  const d=safeDate(asOf)?asOf:todayStr(), r=lvManualAt(e,k,d);
+  if(!r||r.v==='auto')return legalLeave(e,k,d);                 // 기록 전 날짜·'자동' 기록은 자동 계산
+  if(k===0&&!r.abs)return Math.max(0,r.v+legalLeave(e,0,d)-legalLeave(e,0,r.at));   // 첫 1년: 그 뒤 생기는 1일씩은 계속 더한다
+  return r.v;
+}
+/* 화면(관리자 연차 탭·직원 화면)이 발생 일수를 보는 날 — 오늘. 아직 안 온 기간이면 그 기간 첫날(넣어 둔 값이 보이게) */
+function lvShowDate(e,k){ const t=todayStr(), f=lvPeriod(e,k).from; return (f&&t<f)?f:t; }
+/* 그 직원의 그 기간에 든 확정 연차·반차 (upTo 를 주면 그 날짜까지만) */
+function leaveItemsIn(e,k,upTo){
+  const p=lvPeriod(e,k);
+  return Object.entries(leavesDB().items)
+    .filter(([id,x])=>leaveLive(x)&&x.e===e.id&&lvInPeriod(p,x.d)&&(!upTo||x.d<=upTo))
     .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?1:-1);
 }
-function leaveUsed(e,Y){ return leaveItemsOf(Y,e.id).reduce((s,x)=>s+leaveDays(x),0); }
-function leaveEmps(Y){ return DB.employees.filter(e=>e.joinDate<=`${Y}-12-31`&&(!e.leaveDate||e.leaveDate>=`${Y}-01-01`)); }
+/* 연차를 '사용'으로 세는 날인가 — 근무일인 날만. 승인한 뒤 공휴일이 되었거나, 퇴사일 뒤이거나,
+   근무요일을 바꿔 쉬는 날이 된 날의 연차는 깎지 않는다(급여대장·'이 달 연차사용'과 같은 기준). */
+function lvCounts(e,x){ return safeDate(x.d)&&isWorkday(e,new Date(x.d+'T00:00:00')); }
+function leaveUsed(e,k,upTo){ return leaveItemsIn(e,k,upTo).reduce((s,x)=>s+(lvCounts(e,x)?leaveDays(x):0),0); }
+/* 화면에 올릴 직원과 각자의 기간 — 그 기간에 재직한 사람만 */
+function lvViewRows(){
+  return DB.employees.map(e=>{ const k=lvCur(e)+lvView; return {e:e,k:k,p:lvPeriod(e,k)}; })
+    .filter(r=>r.k>=-1&&safeDate(r.e.joinDate)&&r.e.joinDate<=r.p.to
+      &&(!r.e.leaveDate||!r.p.from||r.e.leaveDate>=r.p.from));
+}
+function lvLabel(rows,mine){
+  const cap=mine?'내 연차':'연차';
+  if(!rows.length)return `${cap} · ${lvView===0?'현재 기간':lvView<0?(-lvView)+'기 전':lvView+'기 뒤'}`;
+  const f=rows[0].p.from, to=rows[0].p.to;
+  if(rows.every(r=>r.p.from===f&&r.p.to===to))
+    return rows[0].k<0?`${cap} <span style="font-size:13px;font-weight:600;">${lvDot(to)} 이전 · 적용 전</span>`
+      :`${cap} <span style="font-size:13px;font-weight:600;">${lvDot(f)} ~ ${lvDot(to)}</span>`;
+  return `${cap} · ${lvView===0?'현재 기간':lvView<0?(-lvView)+'기 전':lvView+'기 뒤'}`;
+}
 function renderLeave(){
   if(isStaffDev()){ renderLeaveMine(); return; }     // 직원 화면 — 본인 것만
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display=canManage()?'block':'none';
   const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
   renderLeaveWait();
-  const Y=leaveYear, can=canManage();
-  document.getElementById('leaveLabel').textContent=`${Y}년 연차`;
+  const can=canManage();
   document.getElementById('btnLeaveAdd').style.display=can?'':'none';
-  const emps=leaveEmps(Y);
-  let tg=0,tu=0;
-  const rows=emps.map(e=>{ const g=leaveGrant(e,Y),u=leaveUsed(e,Y); tg+=g; tu+=u; return {e,g,u,auto:(leavesDB().grants[Y]||{})[e.id]==null}; });
-  let h=`<div class="lv-sum"><div><span>총 발생</span><b>${tg}일</b></div><div><span>사용</span><b>${tu}일</b></div><div><span>잔여</span><b style="color:${tg-tu<0?'var(--red)':'var(--purple)'};">${tg-tu}일</b></div></div>`;
+  const rows=lvViewRows().map(r=>{ const sd=lvShowDate(r.e,r.k);   // 아직 안 온 기간은 그 기간 첫날 기준 — 넣어 둔 값이 보이게
+    const g=leaveGrant(r.e,r.k,sd), u=leaveUsed(r.e,r.k), auto=lvManual(r.e,r.k,sd)==null;
+    // 자동 계산 대상이 아닌 사람(적용 전 · 3.3%·일용직·임원인데 수동 값 없음)은 잔여 '-'·합계 제외 — 정산 시트와 같은 기준
+    return {e:r.e,k:r.k,p:r.p,g:g,u:u,auto:auto,nb:r.k<0||((r.e.type!=='regular'||!!r.e.exec)&&auto)}; });
+  document.getElementById('leaveLabel').innerHTML=lvLabel(rows,false);
+  const mixed=rows.length&&!rows.every(r=>r.p.from===rows[0].p.from&&r.p.to===rows[0].p.to);
+  let tg=0,tu=0; rows.forEach(r=>{ if(!r.nb){ tg+=r.g; tu+=r.u; } });
+  let h=`<div class="lv-sum"><div><span>총 발생</span><b>${num1(tg)}일</b></div><div><span>사용</span><b>${num1(tu)}일</b></div><div><span>잔여</span><b style="color:${tg-tu<0?'var(--red)':'var(--purple)'};">${num1(tg-tu)}일</b></div></div>`;
   h+='<div class="card"><div style="font-weight:800;margin-bottom:2px;">직원별 연차 현황</div>';
-  if(!rows.length)h+='<div class="muted">이 해에 재직한 직원이 없습니다.</div>';
-  rows.forEach(({e,g,u,auto})=>{
+  if(!rows.length)h+='<div class="muted">이 기간에 재직한 직원이 없습니다.</div>';
+  rows.forEach(({e,k,p,g,u,auto,nb})=>{
     const left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;
-    const tb=e.type==='regular'?'<span class="badge b-reg">정직원</span>':e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
+    const tb=e.type==='regular'?(e.exec?'<span class="badge b-reg">임원</span>':'<span class="badge b-reg">정직원</span>'):e.type==='freelance'?'<span class="badge b-free">3.3%</span>':'<span class="badge b-daily">일용직</span>';
     h+=`<div class="lv-row"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <div style="font-weight:800;font-size:15.5px;">${esc(e.name)} ${tb}</div>
-      <div style="font-size:13px;white-space:nowrap;">발생 ${can?`<input class="lv-grant" inputmode="decimal" value="${g}" title="눌러서 고치기" onchange="setGrant('${e.id}',this.value)">`:`<b>${g}</b>`}일${auto?'<span class="muted">(자동)</span>':''}</div></div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${u}일</b></span><span>잔여 <b style="font-size:16px;color:${left<0?'var(--red)':'var(--purple)'};">${left}일</b></span></div>
-      <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div></div>`;
+      <div style="font-size:13px;white-space:nowrap;">발생 ${(can&&k>=0)?`<input class="lv-grant" inputmode="decimal" value="${g}" title="눌러서 고치기" onchange="setGrant('${e.id}',this.value)">`:`<b>${g}</b>`}일${auto?'<span class="muted">(자동)</span>':''}</div></div>
+      ${(mixed||k<0)?`<div class="muted" style="font-size:11.5px;margin-top:2px;">${k<0?'연차 적용 전 ('+lvDot(p.to)+' 이전)':lvDot(p.from)+' ~ '+lvDot(p.to)}</div>`:''}
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;"><span>사용 <b>${num1(u)}일</b></span><span>잔여 <b style="font-size:16px;color:${(!nb&&left<0)?'var(--red)':'var(--purple)'};">${nb?'-':num1(left)+'일'}</b></span></div>
+      ${(nb&&k>=0)?`<div class="muted" style="font-size:11.5px;margin-top:2px;">${e.exec?'임원':'정직원 아님'} — 자동 계산 없음. 발생 칸에 숫자를 넣으면 그 값을 씁니다</div>`:''}
+      <div class="lv-bar"><i style="width:${nb?0:pct}%;${(!nb&&left<0)?'background:var(--red);':''}"></i></div></div>`;
   });
-  h+=`<div class="muted" style="margin-top:10px;"><b>연차 시행일은 2026년 11월 1일</b>입니다 — 그 전 기간은 세지 않고, 모두 시행일에 입사한 것처럼 계산합니다(바꾸려면 코드의 LV_START).<br>
-    발생 일수는 근로기준법 기준으로 <b>오늘까지 생긴 날수</b>를 자동 계산한 추정치입니다(회계연도 1~12월 기준). 입사 첫해에는 한 달을 개근할 때마다 그다음 날 1일씩 생기고(최대 11일), 결근한 달은 생기지 않으니 숫자를 직접 줄여 주세요. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직은 0일로 시작합니다.</div></div>`;
-  const items=leaveItemsOf(Y);
+  h+=`<div class="muted" style="margin-top:10px;">연차는 회사가 <b>상시 5인 이상 사업장이 된 ${lvDot(LV_START)}</b>부터 근로기준법 제60조에 따라 계산합니다(고용노동부 임금근로시간과-247). 그 전 기간은 연차 규정이 적용되지 않아 세지 않습니다.<br>
+    직원마다 <b>연차 기산일</b>(입사일과 ${lvDot(LV_START)} 중 늦은 날)부터 <b>1년 단위</b>로 셉니다. 첫 1년은 한 달을 개근할 때마다 그다음 날 1일씩 생기고(최대 11일), 1년이 되는 날 15일, 그 뒤 2년마다 1일씩 늘어납니다(최대 25일).<br>
+    발생 일수는 <b>오늘까지 생긴 날수</b>를 자동 계산한 추정치입니다. 결근한 달은 생기지 않고, 1년간 출근율이 80%에 못 미치면 15일이 아니라 개근한 달마다 1일이니 숫자를 직접 줄여 주세요. 숫자를 눌러 실제 값으로 고칠 수 있고, 비우면 다시 자동 계산됩니다. 3.3%·일용직과 <b>임원</b>(직원 정보에서 지정)은 0일로 시작합니다.</div></div>`;
+  const items=[]; rows.forEach(r=>leaveItemsIn(r.e,r.k).forEach(x=>items.push(x)));
+  items.sort((a,b)=>a.d<b.d?1:-1);
   h+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
   if(!items.length)h+='<div class="muted">아직 등록된 연차가 없습니다. 위의 [＋ 연차 · 반차 등록]을 눌러 추가하세요.</div>';
   items.forEach(x=>{
     const e=emp(x.e); if(!e)return;
     const d=new Date(x.d+'T00:00:00');
-    h+=`<div class="ot-log"><div><b>${esc(String(x.d).slice(5).replace('-','.'))}(${DAYNM[d.getDay()]})</b> ${esc(e.name)} <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div>
+    h+=`<div class="ot-log"><div><b>${esc(String(x.d).slice(5).replace('-','.'))}(${DAYNM[d.getDay()]})</b> ${esc(e.name)} <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${lvCounts(e,x)?'':'<span class="tag hol">휴무일 — 차감 안 함</span>'}${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div>
       ${can?`<button class="btn red" style="padding:5px 10px;font-size:12px;border-radius:8px;" onclick="delLeave('${x.id}')">삭제</button>`:''}</div>`;
   });
   document.getElementById('leaveBody').innerHTML=h+'</div>';
 }
 function setGrant(empId,v){
   if(!canManage())return;
-  const Y=String(leaveYear), L=leavesDB(), s=String(v).trim();
+  const e=emp(empId); if(!e)return;
+  const k=lvCur(e)+lvView;
+  if(k<0){ toast('연차 규정이 적용되기 전 기간입니다'); renderLeave(); return; }
+  const Y=lvGrantKey(e,k), L=leavesDB(), s=String(v).trim();
   L.grants[Y]=L.grants[Y]||{};
-  const who=(emp(empId)||{}).name||'';
-  if(s===''){ delete L.grants[Y][empId]; leavePut(`/grants/${Y}/${empId}`,null,who); }
-  else{ const n=Math.round(parseFloat(s)*2)/2; if(isNaN(n)||n<0){toast('숫자로 입력해 주세요');renderLeave();return;} L.grants[Y][empId]=n; leavePut(`/grants/${Y}/${empId}`,n,who); }
-  save(); renderLeave(); toast('발생 일수를 저장했습니다');
+  const who=e.name||'';
+  let n='auto';
+  if(s!==''){ n=Math.round(parseFloat(s)*2)/2; if(isNaN(n)||n<0){toast('숫자로 입력해 주세요');renderLeave();return;} }
+  /* 기록은 '그날부터'로 덧붙인다(지난 날짜는 그대로). 그날 = 오늘 · 지난 기간이면 그 기간 마지막 날 ·
+     아직 안 온 기간이면 그 기간 첫날 · 그 기간 안에 퇴사했으면 마지막 근무일(퇴사 달 정산에 반영되게). */
+  const p=lvPeriod(e,k), t=todayStr();
+  let at=t<p.from?p.from:(t>p.to?p.to:t);
+  if(safeDate(e.leaveDate)&&e.leaveDate>=p.from&&e.leaveDate<at)at=e.leaveDate;
+  const cur=L.grants[Y][empId];
+  const h=(cur&&typeof cur==='object'&&!Array.isArray(cur))?{...cur}:{};
+  if(typeof cur==='number'&&isFinite(cur)&&cur>=0&&h[p.from]==null)h[p.from]=cur;   // 옛 숫자 값은 기간 첫날 기록으로
+  Object.keys(h).forEach(d=>{ if(d>at)delete h[d]; });                              // 그날 뒤 기록은 새 값이 대신한다
+  h[at]=n;
+  L.grants[Y][empId]=h; leavePut(`/grants/${Y}/${empId}`,h,who);
+  save(); renderLeave();
+  const fixed=e.type!=='regular'||!!e.exec||(safeDate(e.leaveDate)&&e.leaveDate<=t);
+  toast(n==='auto'?`자동 계산으로 되돌렸습니다 — ${lvDot(at)}부터 (그 전 정산은 그대로)`
+    :t>p.to?`저장했습니다 — 그 기간 마지막 날(${lvDot(at)})부터 적용됩니다. 그 달 정산이 바뀝니다`
+    :t<p.from?'저장했습니다 — 그 기간 첫날부터 적용됩니다'
+    :fixed?'저장했습니다 — 이 숫자로 고정합니다 (지난 달 정산은 그대로)'
+    :k===0?'저장했습니다 — 오늘부터 이 숫자로 보고, 앞으로 매달 생기는 1일씩은 계속 더해집니다(지난 달 정산은 그대로)'
+    :'저장했습니다 — 오늘부터 이 기간 발생 일수를 이 숫자로 봅니다(지난 달 정산은 그대로)');
 }
 function openLeaveForm(){
   if(!canManage()){toast('관리자 기기에서만 등록할 수 있습니다');return;}
@@ -2546,7 +2672,7 @@ function saveLeave(){
   if(!n){toast(skip.length?'등록할 수 있는 근무일이 없습니다: '+skip.join(', '):'등록할 근무일이 없습니다');return;}
   Object.assign(L.items,add); save();
   Object.keys(add).forEach(id=>queueLeave(id,true));   // 던져놓기 금지 — 실패하면 직원이 결근으로 잡힌다
-  closeM('mdLeave'); leaveYear=+from.slice(0,4); renderLeave();
+  closeM('mdLeave'); lvView=lvPeriodOf(e,from)-lvCur(e); renderLeave();
   toast(`${e.name}님 ${LEAVE_NM[t]} ${n}건 등록`
     +(repl.length?` (신청 ${repl.length}건을 이 내용으로 바꿨습니다)`:'')
     +(skip.length?` (제외 ${skip.length}건: ${skip.join(', ')})`:''));
@@ -2643,7 +2769,7 @@ async function flushLeaves(){
   } finally { lvBusy=false; }
 }
 /* 연차 발생일수(grants) — 예전에는 던져놓기여서 실패하면 토스트는 '저장했습니다'인데
-   25초 뒤 옛 값으로 되돌아갔다(3일 차이 = 281,328원). 이제 실패를 사람에게 알린다. */
+   25초 뒤 옛 값으로 되돌아갔다(3일 차이 = 통상시급×24시간). 이제 실패를 사람에게 알린다. */
 function leavePut(path,val,who){
   if(!cloudOn())return;
   cfetch('/leaves'+path,{method:'PUT',body:JSON.stringify(val)})
@@ -2692,7 +2818,11 @@ function leaveMergeCloud(cl){
   // 서버가 거부한 항목을 25초마다 조용히 영원히 재시도했다(아무도 모른 채).
   // sendErr 가 붙은 항목은 사람이 [다시 보내기]를 누를 때까지 멈춘다.
   Object.keys(upI).forEach(id=>{ if(!(upI[id]&&upI[id].sendErr))queueLeave(id); });
-  Object.entries(upG).forEach(([y,m])=>cfetch('/leaves/grants/'+y,{method:'PATCH',body:JSON.stringify(m)}).catch(()=>{}));
+  // 보낸 값이 서버에 닿으면 '못 보낸 값'(gHold) 표시도 지운다 — 남겨 두면 다른 관리자 기기의 더 새 값을 25초마다 덮어썼다(재검증)
+  Object.entries(upG).forEach(([y,m])=>cfetch('/leaves/grants/'+y,{method:'PATCH',body:JSON.stringify(m)})
+    .then(()=>{ if(!DB.gHold)return; Object.keys(m).forEach(id=>{ const pth='/grants/'+y+'/'+id;
+      if(DB.gHold[pth]&&JSON.stringify(DB.gHold[pth].v)===JSON.stringify(m[id]))delete DB.gHold[pth]; }); lsSave(); })
+    .catch(()=>{}));
 }
 
 /* ================== 월말 정산 (급여 탭 맨 위) ==================
@@ -2706,17 +2836,42 @@ function settleOne(e,y,m){
     const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
     if(!r)continue;
     if(r.in){ ot+=isWorkday(e,d)?otMin(e,r):holMin(e,r); }
-    if(!isWorkday(e,d)&&holPendMin(e,r)>0)wait++;        // 확인 안 된 휴일근무도 확인 대기로
+    const wdy=isWorkday(e,d);
+    if(!wdy&&(holPendMin(e,r)>0||(r.in&&r.otE&&r.otOk==null)))wait++;   // 확인 안 된 휴일근무 — 기록 1건은 1건으로
     // r.in 가드: 결근 처리된 날에 남은 신고·야근 입력은 세지 않는다.
     // (야근 현황판은 출근 기록이 없으면 보여 주지 않으므로, 세면 출처를 못 찾는 유령이 된다)
     if(r.in&&r.rin&&r.rok==null)wait++;                 // 지각 정정 신고 대기
-    if(r.in&&r.otE&&r.otOk==null)wait++;                // 야근 입력 대기
+    if(wdy&&r.in&&r.otE&&r.otOk==null)wait++;           // 야근 입력 대기 (휴일은 위에서 셌다)
     if(r.in&&(r.far!=null||r.farO!=null))farCnt++;       // 회사 밖에서 찍음 (결근 처리된 날은 세지 않는다 — 현황에서 찾아갈 대상이 없다)
   }
-  const Y=y, grant=leaveGrant(e,Y), used=leaveUsed(e,Y);
+  /* 연차는 '그 달 말일' 기준으로 본다 — 언제 열어도 같은 숫자가 나와야 월말 정산이다.
+     (아직 안 끝난 달은 오늘까지 생긴 것만) */
+  const lv=lvSettle(e,y,m);
   wait+=leaveWaitIn(y,m,e.id);          // 그 달 + 연차만 — 다른 달·신청(k)까지 세면 0이 될 수 없었다
-  return {e,...a,ot,wait,farCnt,grant,used,rest:grant-used};
+  return {e,...a,ot,wait,farCnt,grant:lv.grant,used:lv.used,rest:lv.grant-lv.used,lv:lv};
 }
+/* 그 달 말일 기준 연차 — 정산표와 엑셀이 같이 쓴다 (회사PC 의 lv_settle 과 같은 규칙)
+   grant: 그 연차 기간에 월말(안 끝난 달은 오늘)까지 생긴 일수 / used: 그 기간 월말까지 쓴 일수 */
+function lvSettle(e,y,m){
+  const mEnd=fmtD(new Date(y,m+1,0)), today=todayStr(), asOf=mEnd<today?mEnd:today;
+  /* 그 달에 퇴사했으면 마지막 근무일이 속한 기간을 본다 — 만 N년 되는 날 전날 퇴사하면
+     퇴사 다음 날 시작하는 새 기간(0일)이 나와, 미사용 연차를 정산할 바로 그 달에 0을 보였다. */
+  /* 기간은 '발생을 보는 날'(끝난 달=말일, 진행 중인 달=오늘)로 고른다 — 말일로 고르면 기간이 달 중간에 바뀌는 사람을
+     바뀌기 전에 볼 때 시작도 안 한 새 기간(0일)과 거짓 '미리 사용'이 나왔다(재검증). */
+  const mFirst=fmtD(new Date(y,m,1)), pick=asOf<mFirst?mFirst:asOf;   // 아직 안 온 달은 그 달 첫날
+  const ref=(safeDate(e.leaveDate)&&e.leaveDate<pick)?e.leaveDate:pick;
+  const k=lvPeriodOf(e,ref), p=lvPeriod(e,k);
+  if(k<0)return {k:-1,from:'',to:p.to,grant:0,used:0,manual:false,prev:null};
+  /* 기간이 달 중간에 바뀌었으면(기산일이 1일이 아닌 사람) 직전 기간의 마감 잔여를 따로 낸다 —
+     안 내면 그 값이 어느 달 정산·엑셀에도 나오지 않는다. */
+  let prev=null; const mStart=fmtD(new Date(y,m,1));
+  if(k>=1&&p.from>mStart){ const q=lvPeriod(e,k-1); prev={from:q.from,to:q.to,rest:leaveGrant(e,k-1,q.to)-leaveUsed(e,k-1,q.to)}; }
+  return {k:k,from:p.from,to:p.to,grant:leaveGrant(e,k,asOf),used:leaveUsed(e,k,mEnd),manual:lvManual(e,k,asOf)!=null,prev:prev};
+}
+/* 연차 칸을 비울 줄 — 적용 전(기산일 이전)이거나, 정직원이 아닌데 관리자가 발생 일수를 넣지 않은 사람.
+   3.3%·일용직은 자동 계산을 하지 않는다(legalLeave 가 0). 0일·기간을 찍으면 연차가 있는 것처럼 보인다.
+   정산표·엑셀·회사PC(settle_rows 의 nb)가 같은 규칙을 쓴다. */
+function lvNoBal(e,lv){ return lv.k<0||((e.type!=='regular'||!!e.exec)&&!lv.manual); }
 function num1(v){ return String(Math.round(v*10)/10).replace(/\.0$/,''); }
 function renderSettle(y,m){
   const emps=DB.employees.filter(e=>e.joinDate<=`${y}-${String(m+1).padStart(2,'0')}-31`
@@ -2757,7 +2912,7 @@ function renderSettle(y,m){
       <td class="num">${r.earlyCnt||'-'}</td>
       <td class="num">${r.absent?`<b style="color:#C0392B;">${r.absent}</b>`:'-'}</td>
       <td class="num">${r.leave?num1(r.leave):'-'}</td>
-      <td class="num">${num1(r.rest)}</td>
+      <td class="num">${lvNoBal(r.e,r.lv)?'-':num1(r.rest)}</td>
       <td class="num">${r.ot?fmtHM(r.ot):'-'}</td>
       <td class="num">${r.wait?`<b style="color:#D95B23;">${r.wait}</b>`:'✓'}</td></tr>`;
   });
@@ -2767,7 +2922,7 @@ function renderSettle(y,m){
     h+=`<div class="muted" style="margin-top:8px;font-size:12px;">📍 회사 밖에서 찍은 기록: `
       +far.map(r=>`${esc(r.e.name)} ${r.farCnt}건`).join(' · ')+` — 현황에서 확인하세요.</div>`;
   }
-  h+=`<div class="muted" style="margin-top:6px;font-size:12px;">연차 잔여는 ${y}년 기준입니다. 급여 계산은 아래 표를 보세요(야근은 급여에 자동 반영되지 않습니다).</div></div>`;
+  h+=`<div class="muted" style="margin-top:6px;font-size:12px;">연차 잔여는 직원별 연차 기간(기산일부터 1년)에서 <b>이 달 말일까지</b> 생긴 일수 − 쓴 일수입니다(자동 계산은 정직원만). 급여 계산은 아래 표를 보세요(야근은 급여에 자동 반영되지 않습니다).</div></div>`;
   return h;
 }
 
@@ -3036,6 +3191,102 @@ function buildLedgerSpec(y,m,regs,frees,dailys,notes){
   return {title:title,cells:cells,merges:merges,widths:LG_W,heights:heights,rows:g+guide.length};
 }
 
+/* ══════════ 근태·연차 정산 시트 ══════════
+   급여대장 옆에 붙는 둘째 장. 자동발송\급여대장_양식.build_settle_spec 과 **같은 사양**이어야 한다. */
+const LG_SETTLE_COLS=19;
+const LG_SETTLE_W=[4,12,8,7,7,6,6,6,8.5,11.5,11.5,7,7,7,9,7,11,13,24];
+const LG_SETTLE_HEAD=['No','직원명','고용\n형태','소정\n근무일','출근\n일수','지각\n(회)','조퇴\n(회)','결근\n(일)',
+ '이 달\n연차사용','연차 기간\n시작','연차 기간\n끝','연차\n발생','연차\n사용','연차\n잔여',
+ '야근·휴일\n(시간)','확인\n대기(건)','1일\n통상임금','미사용 연차\n평가액','비고'];
+const LG_SETTLE_SUB=['','','','(일)','(일)','','','','(일)','','','(월말 기준)','(월말 기준)','(자동)',
+ '(자동+인정)','','(원)','(참고)',''];
+function buildSettleSpec(y,m,rows,notes,lvStart){
+  lvStart=lvStart||LV_START;
+  const cells=[],merges=[],heights={};
+  const put=(r,c,v,f,s)=>{ const d={r:r,c:c,s:s||'plain'};
+    if(f!=null)d.f=f; else if(v!=null)d.v=v; cells.push(d); };
+  const title=`주식회사 리플래시 — ${y}년 ${m}월 근태·연차 정산`;
+  put(1,1,title,null,'title'); merges.push([1,1,1,LG_SETTLE_COLS]); heights[1]=25.5;
+  put(2,1,`※ 연차는 상시 5인 이상 사업장이 된 ${lvStart} 부터 근로기준법 제60조에 따라 계산 `
+    +`(고용노동부 임금근로시간과-247) | 연차 발생·사용·잔여는 이 달 말일 기준`,null,'note');
+  merges.push([2,1,2,LG_SETTLE_COLS]);
+  put(4,1,'■ 직원별 근태·연차',null,'sec_reg'); merges.push([4,1,4,LG_SETTLE_COLS]);
+  LG_SETTLE_HEAD.forEach((tx,i)=>put(5,i+1,tx,null,'head_reg'));
+  LG_SETTLE_SUB.forEach((tx,i)=>put(6,i+1,tx,null,'sub_reg'));
+  heights[5]=36.75;
+  const r0=7;
+  rows.forEach((e,i)=>{
+    const r=r0+i, nb=!!e.nb;
+    put(r,1,i+1,null,'no');
+    put(r,2,e.name,null,'plain');
+    put(r,3,e.kind,null,'plain');
+    put(r,4,e.sched,null,'no');
+    put(r,5,e.attend,null,'no');
+    put(r,6,e.late||null,null,'no');
+    put(r,7,e.early||null,null,'no');
+    put(r,8,e.absent||null,null,'no');
+    put(r,9,e.lvMonth||null,null,'auto_num_h');
+    put(r,10,nb?null:e.lvFrom,null,'plain');
+    put(r,11,nb?null:e.lvTo,null,'plain');
+    put(r,12,nb?null:e.grant,null,'auto_num_h');
+    put(r,13,nb?null:e.used,null,'auto_num_h');
+    put(r,14,null,`IF(L${r}="","",L${r}-M${r})`,'auto_num_h');
+    put(r,15,e.otH||null,null,'auto_num_h');
+    put(r,16,e.wait||null,null,'no');
+    put(r,17,e.day8||null,null,'auto_money');
+    put(r,18,null,`IF(OR(Q${r}="",N${r}=""),"",ROUND(Q${r}*MAX(0,N${r}),0))`,'auto_money');
+    put(r,19,e.note||null,null,'plain');
+  });
+  const rs=r0+Math.max(rows.length,1);          // 사람이 없어도 합계 줄은 둔다
+  put(rs,2,'합계',null,'sum_head_reg');
+  [5,6,7,8,16].forEach(c=>put(rs,c,null,`SUM(${lgCol(c)}${r0}:${lgCol(c)}${rs-1})`,'sum_num_reg'));
+  [9,12,13,14,15].forEach(c=>put(rs,c,null,`SUM(${lgCol(c)}${r0}:${lgCol(c)}${rs-1})`,'sum_numh_reg'));
+  put(rs,18,null,`SUM(R${r0}:R${rs-1})`,'sum_money_reg');
+  const g=rs+2;
+  put(g,1,'■ 읽는 법',null,'sec_tot'); merges.push([g,1,g,LG_SETTLE_COLS]);
+  const guide=[
+   `★ 연차 발생은 근로기준법 기준으로 자동 계산한 추정치입니다 — 직원별 연차 기산일(입사일과 ${lvStart} 중 늦은 날)부터 1년 단위, `
+     +`첫 1년은 1개월 개근마다 1일(최대 11일), 1년이 되는 날 15일.`,
+   '★ 연차 자동 계산은 정직원만 합니다(임원 제외). 3.3%·일용직·임원은 관리자가 앱에서 발생 일수를 넣은 경우에만 연차 칸이 채워집니다.',
+   '★ 개근·출근율 80% 여부는 자동으로 반영하지 않습니다. 관리자가 앱에서 발생 일수를 고치면 비고에 "연차 발생 수동 입력"으로 표시됩니다.',
+   '★ 연차 발생·사용은 해당 연차 기간에서 이 달 말일까지의 누적입니다. 아직 끝나지 않은 달은 만든 날까지 생긴 일수입니다.',
+   '★ 야근·휴일근무 시간: 평일은 퇴근을 30분 이상 늦게 눌러 자동으로 잡힌 시간 — 단 직원이 야근을 입력한 날은 관리자가 인정한 입력분만(반려하면 그날 0), 휴일은 관리자가 인정한 것만 셉니다. 급여에는 자동 반영되지 않습니다.',
+   '★ 미사용 연차 평가액 = 1일 통상임금(통상시급 × 8시간) × 잔여 일수(음수면 0). 회계 참고용 추정치이며 실제 지급 의무 금액과 다를 수 있습니다.'
+  ].concat(notes||[]);
+  guide.forEach((tx,i)=>{ put(g+1+i,1,tx,null,'guide'); merges.push([g+1+i,1,g+1+i,LG_SETTLE_COLS]); });
+  return {title:title,cells:cells,merges:merges,widths:LG_SETTLE_W,heights:heights,rows:g+guide.length};
+}
+/* 정산 시트에 들어갈 직원별 한 줄 (회사PC 의 settle_rows 와 같은 값·같은 순서) */
+function settleData(y,m){
+  const ym=`${y}-${String(m+1).padStart(2,'0')}`;
+  const inM=e=>e.joinDate<=`${ym}-31`&&(!e.leaveDate||e.leaveDate>=`${ym}-01`);
+  const KIND={regular:'정직원',freelance:'3.3%',daily:'일용직'};
+  const last=new Date(y,m+1,0).getDate(), rows=[];
+  ['regular','freelance','daily'].forEach(tp=>DB.employees.filter(e=>e.type===tp&&inM(e)).forEach(e=>{
+    const s=settleOne(e,y,m), lv=s.lv;
+    let sched=0;
+    for(let dd=1;dd<=last;dd++)if(isWorkday(e,new Date(y,m,dd)))sched++;
+    const nb=lvNoBal(e,lv), note=[], o=ov(ym,e.id);
+    if(lv.k<0)note.push('연차 적용 전');
+    else if(nb)note.push((tp==='regular'&&e.exec)?'임원 — 연차 대상 아님':'연차 자동 계산 없음(정직원만)');
+    else if(lv.manual)note.push('연차 발생 수동 입력');
+    if(!nb&&lv.grant-lv.used<0)note.push('연차 미리 사용(잔여 음수)');
+    if(!nb&&lv.prev)note.push(`직전 연차 기간(${lv.prev.from}~${lv.prev.to}) 마감 잔여 ${num1(lv.prev.rest)}일`);
+    if(['absent','early','absentW'].some(k=>o[k]!=null))note.push('급여 수동 조정 있음(급여대장 기준)');
+    if(String(e.joinDate||'').slice(0,7)===ym)note.push(e.joinDate+' 입사');
+    if(String(e.leaveDate||'').slice(0,7)===ym)note.push(e.leaveDate+' 퇴사');
+    rows.push({name:e.name,kind:(tp==='regular'&&e.exec)?'임원':KIND[tp],sched:sched,attend:s.attend,late:s.lateCnt,early:s.earlyCnt,absent:s.absent,
+      lvMonth:s.leave,nb:nb,lvFrom:lv.from,lvTo:lv.to,grant:lv.grant,used:lv.used,
+      otH:Math.floor((s.ot*100+30)/60)/100,          // 분 → 시간(소수 둘째 자리 반올림)
+      wait:s.wait,
+      day8:(tp==='regular'&&Number(e.salary)>0)?calcRegular(e,y,m).wage*8:null,
+      note:note.join(' · ')});
+  }));
+  const notes=[], w=rows.reduce((a,r)=>a+r.wait,0);
+  if(w)notes.push(`⚠️ 아직 확인하지 않은 건이 ${w}건 있습니다 — 앱에서 인정·반려한 뒤 다시 내려받으세요.`);
+  return {rows:rows,notes:notes};
+}
+
 /* ── 아주 작은 xlsx 쓰기 (ZIP STORE + OOXML) ──
    압축을 쓰지 않으므로 CRC32 만 있으면 된다. 엑셀·구글시트가 그대로 읽는다. */
 let _crcT=null;
@@ -3097,7 +3348,7 @@ const LG_STYLES=[
  ['in_money_f',1,10,'FF0000FF','FFF3E8F9','#,##0','right',0],
  ['in_txt_d',1,9,null,'FFFBE5D6','General','center',0],
  ['in_money_d',1,10,'FF0000FF','FFFBE5D6','#,##0','right',0],
- ['in_num_d',0,9,null,'FFFBE5D6','0','center',0],
+ ['in_num_d',0,9,null,'FFFBE5D6','0.0#','center',0],   // 7.5h 가 '8' 로 보이면 안 된다 (회사PC 급여대장_쓰기 와 같게)
  ['auto_money',0,9,null,null,'#,##0','right',0],
  ['auto_num_b',1,9,null,null,'0','center',0],
  ['net',1,9,null,'FFFFFF00','#,##0','right',0],
@@ -3379,16 +3630,20 @@ function exportExcel(){
   const y=payDate.getFullYear(), m=payDate.getMonth();
   try{
     const d=ledgerData(y,m);
-    const buf=buildXlsx([
-      {name:`${m+1}월`,spec:buildLedgerSpec(y,m+1,d.regs,d.frees,d.dailys,d.notes),freeze:6},
-      {name:'근태기록',spec:attendSpec(y,m),freeze:2}]);
+    const sheets=[{name:`${m+1}월`,spec:buildLedgerSpec(y,m+1,d.regs,d.frees,d.dailys,d.notes),freeze:6}];
+    // 정산 시트는 참고 자료 — 여기서 오류가 나도 급여대장은 내려받을 수 있어야 한다
+    let stOk=true;
+    try{ const sd=settleData(y,m); sheets.push({name:`${m+1}월 정산`,spec:buildSettleSpec(y,m+1,sd.rows,sd.notes),freeze:6}); }
+    catch(e2){ stOk=false; console.error('정산 시트',e2); }
+    sheets.push({name:'근태기록',spec:attendSpec(y,m),freeze:2});
+    const buf=buildXlsx(sheets);
     const blob=new Blob([buf],
       {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download=`${y}_${String(m+1).padStart(2,'0')}_리플래시_급여_관리대장.xlsx`;
     a.click(); URL.revokeObjectURL(a.href);
-    toast('엑셀 파일이 다운로드되었습니다');
+    toast(stOk?'엑셀 파일이 다운로드되었습니다':'엑셀을 내려받았습니다 — 정산 시트는 만들지 못해 뺐습니다(급여대장은 정상)');
   }catch(err){
     console.error(err);
     toast('엑셀을 만들지 못했습니다: '+((err&&err.message)||err));
@@ -3527,7 +3782,7 @@ async function cfetch(path,opt){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
-function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',main:!!e.main,autoPunch:!!e.autoPunch,phone:e.phone||'',duty:e.duty||''}; }
+function sanitizeEmp(e){ return {name:e.name,type:e.type,joinDate:e.joinDate,leaveDate:e.leaveDate||null,schedule:e.schedule,role:e.role||'staff',main:!!e.main,exec:!!e.exec,autoPunch:!!e.autoPunch,phone:e.phone||'',duty:e.duty||''}; }
 // 메인관리자 고정: 데이터에 메인관리자가 없으면 seed의 메인관리자 id(e2)를 지정하고, 항상 관리자 권한 유지
 function ensureMain(){
   if(!DB||!DB.employees)return;
@@ -3598,7 +3853,11 @@ async function cloudPushPriv(editedId){
   const c=cloudCfg(); if(!cloudOn()||!c||c.role!=='admin')return;
   if(!c.key){ if(isOwnerDev()){ c.key=genKey(); save(); } else return; }
   // 덮어쓰기 금지: 클라우드의 기존 값을 읽어 병합. 빈 값(0원 등)이 실제 값을 지우지 못하게 함
-  let cur=null; try{ cur=await privDecrypt(await cfetch('/priv')); }catch(e){}
+  /* 읽기에 실패하면 쓰지 않는다 — 예전에는 빈 값으로 보고 덮어써, 다른 관리자가 올린 급여탭 수정값(회사PC 대장이 씀)을 지웠다. */
+  let raw;
+  try{ raw=await cfetch('/priv'); }
+  catch(e){ console.warn('급여영역 읽기 실패 — 이번엔 올리지 않음',e); privFailNote(); return; }
+  let cur=null; try{ cur=await privDecrypt(raw); }catch(e){}
   const emps=(cur&&cur.emps)||{};
   DB.employees.forEach(e=>{
     const l=privEmp(e), cl=emps[e.id]||{};
@@ -3609,14 +3868,21 @@ async function cloudPushPriv(editedId){
   });
   const enc=await privEncrypt({emps,overrides:mergeOv((cur&&cur.overrides),DB.overrides),ts:Date.now()});
   if(!enc)return;
-  try{ await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)}); }catch(e){ console.warn('priv push 실패',e); }
+  try{ await cfetch('/priv',{method:'PUT',body:JSON.stringify(enc)}); }
+  catch(e){ console.warn('priv push 실패',e); privFailNote(); }
 }
 let privTimer=null;
 function schedulePrivPush(){ clearTimeout(privTimer); privTimer=setTimeout(cloudPushPriv,800); }
+/* 직원 정보·급여가 서버에 안 올라갔다 — 다음 동기화에서 클라우드 값으로 돌아가므로 사람이 다시 저장해야 한다.
+   (자동 재전송 장치를 넣었다가 뺐다: 명단·급여영역은 통째 PUT 이라 재전송끼리·다른 기기 변경과 서로 덮었다 — 2026-11-13 재검증) */
+function rosterFailNote(){ toast('⚠️ 직원 정보를 서버에 저장하지 못했습니다 — 인터넷을 확인하고 다시 저장해 주세요'); }
+function privFailNote(){ toast('⚠️ 급여 정보를 서버에 저장하지 못했습니다 — 인터넷을 확인하고 다시 저장해 주세요'); }
 async function cloudPushRoster(editedId){
   if(!cloudOn()||cloudCfg().role!=='admin')return;
-  // 덮어쓰기 금지: 클라우드 명단을 먼저 읽어 병합. 빈 값이 실제 값을 지우지 못하게 함
-  let cloud={}; try{ cloud=await cfetch('/emps')||{}; }catch(e){}
+  /* 덮어쓰기 금지: 클라우드 명단을 먼저 읽어 병합. 읽기에 실패하면 쓰지 않는다 — 예전에는 '빈 명단'으로 보고
+     이 기기 값으로 통째 덮어써, 다른 기기가 올린 직원과 [임원] 표시를 지웠다. */
+  let cloud;
+  try{ cloud=await cfetch('/emps')||{}; }catch(e){ console.warn('명단 읽기 실패 — 이번엔 올리지 않음',e); if(editedId)rosterFailNote(); return; }
   const localById={}; DB.employees.forEach(e=>localById[e.id]=sanitizeEmp(e));
   const obj={};
   new Set([...Object.keys(cloud),...Object.keys(localById)]).forEach(id=>{
@@ -3624,14 +3890,17 @@ async function cloudPushRoster(editedId){
     let base;
     if(!c)base=l;                       // 이 기기에만 있는 직원 → 추가
     else if(!l)base=c;                  // 클라우드에만 있는 직원 → 보존 (절대 삭제 안 함)
-    else if(id===editedId)base={...c,...l}; // 방금 수정한 직원: 이 기기 값 우선
+    else if(id===editedId){ base={...c,...l};   // 방금 수정한 직원: 이 기기 값 우선
+      // 단, 임원·권한·메인관리자는 메인 관리자 기기만 바꾼다 — 다른 기기의 낡은 값으로 되돌리지 않게
+      if(!isOwnerDev()){ base.exec=c.exec===true; base.role=c.role||'staff'; base.main=!!c.main; } }
     else base={...l,...c};              // 그 외: 클라우드(최신) 우선
     // 전화번호·담당업무는 어느 쪽이든 비어있지 않은 값이 항상 이김
     base.phone=(id===editedId?((l&&l.phone)||(c&&c.phone)):((c&&c.phone)||(l&&l.phone)))||'';
     base.duty=(id===editedId?((l&&l.duty)||''):((c&&c.duty)||(l&&l.duty)||''));
     obj[id]=base;
   });
-  try{ await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)}); }catch(e){console.warn('roster push 실패',e);}
+  try{ await cfetch('/emps',{method:'PUT',body:JSON.stringify(obj)}); }
+  catch(e){ console.warn('roster push 실패',e); if(editedId)rosterFailNote(); }
 }
 function queueRec(date,empId){
   if(!cloudOn())return;
@@ -3750,8 +4019,9 @@ async function cloudSync(){
       DB.employees=Object.entries(room.emps).filter(([id])=>safeId(id))
         .map(([id,e])=>[id,safeEmpVal(e)]).filter(([,e])=>e).map(([id,e])=>{
         const l=local[id]||{};
-        return {id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
+        const mg={id,salary:0,hourly:0,dailyH:8,rrn:'',bank:'',acct:'',role:'staff',...l,...e,
           phone:(e.phone||l.phone||''),duty:(e.duty||l.duty||'')}; // 전화번호·담당업무는 비어있지 않은 값 우선 (지워짐 방지)
+        return mg;
       });
       // 이 기기에만 있는 직원은 버리지 않고 유지 + 클라우드에 올림
       const cloudIds=new Set(Object.keys(room.emps));
@@ -4100,24 +4370,43 @@ function supMergeCloud(cl){
    반려는 st:'x'. 대기·반려 건은 연차 사용일수에 들어가지 않는다. */
 function isStaffDev(){ const c=cloudCfg(); return !!(c&&c.role==='staff'); }
 function myEmpId(){ const c=cloudCfg(); return (c&&c.role==='staff'&&c.myEmpId)?c.myEmpId:null; }
+/* 직원 화면의 '내 연차가 어떻게 생기나' 한 줄 — 첫 1년 / 2년 차부터 / 정직원 아님 */
+function lvMineRule(e,k,p){
+  const man=lvManual(e,k,lvShowDate(e,k))!=null;
+  if(e.exec&&!man)return '임원은 근로기준법 연차 자동 계산 대상이 아닙니다.';
+  if(e.type!=='regular'&&!man)
+    return '연차는 정직원 기준으로 자동 계산합니다(3.3%·일용직은 관리자가 따로 정합니다).';
+  if(man&&(e.exec||e.type!=='regular'))return '이 기간 연차는 관리자가 정한 일수입니다.';
+  if(k===0){
+    const y1=lvShift(lvBase(e),12), stay=!(safeDate(e.leaveDate)&&e.leaveDate<y1);   // 1년 되는 날 전에 퇴사가 정해졌으면 15일 안내를 하지 않는다
+    return `내 연차 기산일은 <b>${lvDot(lvBase(e))}</b>입니다. 첫 1년은 한 달을 개근하면 그다음 날 1일씩 생기고(최대 11일)`
+      +(stay?`, <b>${lvDot(y1)}</b>에 15일이 생깁니다.`:'.');
+  }
+  return `내 연차 기산일은 <b>${lvDot(lvBase(e))}</b>입니다. 이번 연차 기간은 <b>${lvDot(p.from)} ~ ${lvDot(p.to)}</b>이고, 기간이 시작하는 날 그 기간의 연차가 한꺼번에 생깁니다.`;
+}
 function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 준다 (동료 정보 비노출)
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display='none';
   const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
-  const Y=leaveYear, id=myEmpId(), e=id?emp(id):null;
-  document.getElementById('leaveLabel').textContent=`${Y}년 내 연차`;
+  const id=myEmpId(), e=id?emp(id):null;
+  const k=e?lvCur(e)+lvView:0, p=e?lvPeriod(e,k):null;
+  document.getElementById('leaveLabel').innerHTML=lvLabel(e?[{e:e,k:k,p:p}]:[],true);
   const box=document.getElementById('leaveWaitBox'); if(box)box.innerHTML='';
   if(!e){
     document.getElementById('leaveBody').innerHTML=
       '<div class="card"><div class="muted">본인 확인이 안 됩니다. 받으신 초대 링크로 다시 입장해 주세요.</div></div>';
     return;
   }
-  const g=leaveGrant(e,Y), u=leaveUsed(e,Y), left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;
-  let s=`<div class="lv-sum"><div><span>총 발생</span><b>${num1(g)}일</b></div><div><span>사용</span><b>${num1(u)}일</b></div>
-    <div><span>잔여</span><b style="color:${left<0?'var(--red)':'var(--purple)'};">${num1(left)}일</b></div></div>
+  const sd=lvShowDate(e,k), g=leaveGrant(e,k,sd), u=leaveUsed(e,k), left=g-u, pct=g?Math.min(100,Math.round(u/g*100)):0;   // 관리자 화면과 같은 날 기준
+  const nb=k<0||((e.type!=='regular'||!!e.exec)&&lvManual(e,k,sd)==null);   // 자동 계산 대상이 아니면 발생·잔여는 '-'
+  let s=`<div class="lv-sum"><div><span>총 발생</span><b>${nb?'-':num1(g)+'일'}</b></div><div><span>사용</span><b>${num1(u)}일</b></div>
+    <div><span>잔여</span><b style="color:${(!nb&&left<0)?'var(--red)':'var(--purple)'};">${nb?'-':num1(left)+'일'}</b></div></div>
     <div class="card"><div style="font-weight:800;margin-bottom:6px;">${esc(e.name)}님 연차</div>
     <div class="lv-bar"><i style="width:${pct}%;${left<0?'background:var(--red);':''}"></i></div>
-    <div class="muted" style="margin-top:8px;font-size:12.5px;">연차는 <b>2026년 11월 1일부터</b> 시행합니다 — 그 전 기간은 세지 않습니다.<br>
-    한 달을 개근하면 그다음 날 1일씩 생기고, 1년이 지나면 해마다 15일이 생깁니다. 실제와 다르면 관리자에게 말씀해 주세요.</div></div>`;
+    <div class="muted" style="margin-top:8px;font-size:12.5px;">${k<0
+      ?`이 기간은 연차 규정이 적용되기 전입니다. 연차는 회사가 상시 5인 이상 사업장이 된 <b>${lvDot(LV_START)}</b>부터 적용됩니다.`
+      :`연차는 회사가 상시 5인 이상 사업장이 된 <b>${lvDot(LV_START)}</b>부터 근로기준법에 따라 적용됩니다.<br>
+        ${lvMineRule(e,k,p)}<br>
+        숫자는 오늘까지 생긴 일수입니다. 실제와 다르면 관리자에게 말씀해 주세요.`}</div></div>`;
 
   const wait=leaveWaiting(id);
   if(wait.length){
@@ -4143,19 +4432,19 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 �
     s+='<div class="muted" style="margin-top:8px;font-size:12px;">이 신청은 관리자에게 전달되지 않았습니다. 같은 날로 다시 신청하시거나, 관리자에게 직접 말씀해 주세요.</div></div>';
   }
 
-  const items=leaveItemsOf(Y,id);
+  const items=leaveItemsIn(e,k);
   s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">사용 내역 <span style="color:var(--purple);">${items.length}건</span></div>`;
   if(!items.length)s+='<div class="muted">아직 쓴 연차가 없습니다.</div>';
   items.forEach(x=>{
     const d=new Date(x.d+'T00:00:00');
     s+=`<div class="ot-log"><div><b>${esc(String(x.d).slice(5).replace('-','.'))}(${DAYNM[d.getDay()]})</b>
-      <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div></div>`;
+      <span class="tag leave">${LEAVE_NM[x.t]||''}</span>${lvCounts(e,x)?'':'<span class="tag hol">휴무일 — 차감 안 함</span>'}${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}</div></div>`;
   });
   s+='</div>';
 
   /* 연차 말고 올린 신청 — 처리 상태까지 보여 준다 (대기 / 승인 / 반려) */
   const rqs=Object.entries(leavesDB().items)
-    .filter(a=>a[1]&&!a[1].del&&a[1].k&&a[1].e===id&&String(a[1].d).slice(0,4)===String(Y))
+    .filter(a=>a[1]&&!a[1].del&&a[1].k&&a[1].e===id&&lvInPeriod(p,a[1].d))
     .map(a=>Object.assign({id:a[0]},a[1])).sort((a,b)=>a.d<b.d?1:-1);
   s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">그 밖의 신청 <span style="color:var(--purple);">${rqs.length}건</span></div>`;
   if(!rqs.length)s+='<div class="muted">야근 · 조퇴 · 늦은 출근 · 외출 · 휴일근무는 위 [✋ 그 밖의 신청] 으로 올려 주세요.</div>';
@@ -4263,7 +4552,7 @@ function saveReq(){
   if(k!=='etc')o.t1=t1;
   if(k==='out')o.t2=t2;
   it[rid]=o; save(); queueLeave(rid,true);      // 실패해도 자동 재전송 — 조용히 사라지지 않는다
-  closeM('mdReq'); leaveYear=+ds.slice(0,4); renderLeave();
+  closeM('mdReq'); lvView=lvPeriodOf(e,ds)-lvCur(e); renderLeave();
   pushEvent('rq',id,`${REQ_NM[k]} — ${ds.slice(5).replace('-','.')}${o.t1?' '+o.t1:''}${(k==='out'&&o.t2)?'~'+o.t2:''}`);
   toast(`${REQ_NM[k]} 신청했습니다 — 관리자 확인 후 승인됩니다`);
 }
@@ -4297,9 +4586,9 @@ function openLvReq(){
     if(!f){ toast('그 이름을 찾지 못했습니다'); return; }
     window._lqEmp=f.id;
   }
-  const e=emp(window._lqEmp), Y=new Date().getFullYear();
+  const e=emp(window._lqEmp), kc=lvCur(e);
   document.getElementById('lqSub').innerHTML=
-    `${esc(e.name)}님 · ${Y}년 남은 연차 <b>${(leaveGrant(e,Y)-leaveUsed(e,Y)).toFixed(1).replace('.0','')}일</b>`;
+    `${esc(e.name)}님 · 남은 연차 <b>${num1(leaveGrant(e,kc)-leaveUsed(e,kc))}일</b>`;
   document.getElementById('lqType').value='full';
   document.getElementById('lqFrom').value=todayStr();
   document.getElementById('lqTo').value='';
@@ -4327,6 +4616,26 @@ function lqDays(){ // 신청 대상 근무일 목록
   }
   return out;
 }
+/* 이번 신청을 더했을 때 처음으로 연차가 모자라는 날 (없으면 null).
+   기간(1년)마다 따로, 그 기간의 확정 연차와 이번 신청을 날짜순으로 쌓아 '그날까지 생긴 일수 − 그날까지 쓴 일수'를 본다.
+   예전에는 첫 신청일 하나로만 계산해서 기간 경계(10/31→11/1)에 걸친 신청에 거짓 '부족',
+   뒤에 잡힌 확정 연차가 있으면 음수를 보였다. */
+function lqShort(e,days,t){
+  const one=t==='full'?1:0.5, byK={};
+  days.forEach(ds=>{ const k=lvPeriodOf(e,ds); if(k>=0)(byK[k]=byK[k]||[]).push(ds); });
+  let worst=null;
+  Object.keys(byK).forEach(kk=>{
+    const k=+kk, first=byK[k][0];
+    const ev=leaveItemsIn(e,k).filter(x=>lvCounts(e,x)).map(x=>({d:x.d,u:leaveDays(x)}))
+      .concat(byK[k].map(d=>({d:d,u:one}))).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+    let cum=0;
+    ev.forEach(x=>{ cum+=x.u; if(x.d<first)return;
+      const left=leaveGrant(e,k,x.d)-cum;
+      if(left<0){ if(!worst)worst={left:left,ds:x.d,min:left};          // 처음 모자라는 날 (기간은 날짜순으로 돈다)
+        else if(left<worst.min)worst.min=left; } });                     // 그 뒤 가장 모자라는 값
+  });
+  return worst;
+}
 function lqCalc(){
   const box=document.getElementById('lqCalcBox'); if(!box)return;
   const e=emp(window._lqEmp); const t=document.getElementById('lqType').value;
@@ -4334,10 +4643,10 @@ function lqCalc(){
   const pw=document.getElementById('lqPastWarn');
   if(pw)pw.style.display=(document.getElementById('lqFrom').value<monthFloor())?'block':'none';
   if(!days.length){ box.innerHTML='<span class="muted" style="font-weight:400;">신청할 근무일이 없습니다 (지난달·휴무일·이미 신청한 날 제외)</span>'; return; }
-  const use=days.length*(t==='full'?1:0.5);
-  const Y=+days[0].slice(0,4), rest=leaveGrant(e,Y)-leaveUsed(e,Y);
+  const use=days.length*(t==='full'?1:0.5), sh=lqShort(e,days,t);
   box.innerHTML=`${days.length}일 신청 · <span style="color:var(--purple);">${String(use).replace(/\.0$/,'')}일 차감</span>`
-    +(use>rest?`<br><span style="color:#C0392B;font-size:12.5px;">남은 연차(${String(rest).replace(/\.0$/,'')}일)보다 많습니다 — 관리자 확인 필요</span>`:'');
+    +(sh?`<br><span style="color:#C0392B;font-size:12.5px;">${esc(String(sh.ds).slice(5).replace('-','.'))}에 남는 연차가 ${num1(sh.left)}일이 됩니다`
+      +(sh.min<sh.left?` (그 뒤 가장 적을 때 ${num1(sh.min)}일)`:'')+` — 관리자 확인 필요</span>`:'');
 }
 function saveLvReq(){
   const e=emp(window._lqEmp); if(!e)return;
@@ -4354,7 +4663,7 @@ function saveLvReq(){
   });
   Object.assign(leavesDB().items,add); save();
   Object.keys(add).forEach(id=>queueLeave(id,true));   // 실패해도 자동 재전송 — 조용히 사라지지 않는다
-  closeM('mdLvReq'); leaveYear=+days[0].slice(0,4); renderLeave();
+  closeM('mdLvReq'); lvView=lvPeriodOf(e,days[0])-lvCur(e); renderLeave();
   pushEvent('lv',e.id,`${LEAVE_NM[t]} ${days.length}건 (${days[0].slice(5).replace('-','.')}${days.length>1?' 외':''})`);
   toast(`${LEAVE_NM[t]} ${days.length}건 신청했습니다 — 관리자 승인 후 확정됩니다`);
 }
@@ -4380,7 +4689,7 @@ function lvApprove(id){
 function lvRejectOne(id){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   const x=leavesDB().items[id]; if(!x)return;
-  if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${LEAVE_NM[x.t]} 신청을 반려할까요?`))return;
+  if(!confirm(`${(emp(x.e)||{}).name||''}님 ${x.d} ${lvName(x)} 신청을 반려할까요?`))return;   // 그 밖의 신청(k)은 LEAVE_NM 에 없다
   x.st='x'; x.ts=Date.now(); save(); queueLeave(id); renderLeave();
   toast('반려했습니다');
 }
@@ -4885,7 +5194,7 @@ function renderCloudStatus(){
   applyNavVis();
 }
 /* 급여 암호키 꺼내기 — 회사 PC 의 월말 급여대장이 암호화된 급여를 풀 때 쓴다.
-   이 키가 없으면 대장에 급여가 0원으로 나온다(정유진·박은성 2026-10 처럼).
+   이 키가 없으면 대장에 급여가 0원으로 나온다(2026-10 에 실제로 2명이 0원으로 나왔다).
    키는 관리자 초대 링크 안에만 있어서 사람이 꺼낼 길이 없었다 — 그래서 만든 버튼이다. */
 function copyPayKey(){
   const c=cloudCfg();
