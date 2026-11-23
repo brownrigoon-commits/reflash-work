@@ -755,7 +755,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261123_142441'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261123_155246'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -2229,7 +2229,7 @@ function openRec(id,ds){
       `야근 신청: <b>${esc(otEndTxt(e0,r.otE))}</b>까지 예정 (${fmtHM(ex)})`
       +(r.otMemo?`<br>내용: ${esc(r.otMemo)}`:'')
       +(act!=null?`<br>퇴근 누른 시각: <b>${esc(otCapTxt(e0,r))}</b> → 야근 <b>${fmtHM(cm)}</b>${okd?'':' (인정하면 이 시간)'}`
-        :r.out?`<br><span style="color:#C0392B;font-weight:700;">⚠️ 실제로 퇴근한 시각을 모릅니다(${r.auto?'자동 퇴근':'정시로 기록'}) — ${otPunchOpen(e0,r,ds)?'직원이 마칠 때 퇴근을 다시 누르거나, ':''}위 퇴근 칸에 실제 퇴근 시각을 적어 주세요. 정시에 퇴근한 것이 맞으면 그대로 [저장]을 누르세요</span>`
+        :r.out?`<br><span style="color:#C0392B;font-weight:700;">⚠️ 실제로 퇴근한 시각을 모릅니다(${r.auto?'자동 퇴근':'정시로 기록'}) — ${otPunchOpen(e0,r,ds)?'직원이 마칠 때 퇴근을 다시 누르거나, ':''}위 퇴근 칸에 실제 퇴근 시각을 적어 주세요. ${esc(r.out)}에 퇴근한 것이 맞으면 그대로 [저장]을 누르세요</span>`
         :(ds<todayStr()&&!otPunchOpen(e0,r,ds))?'<br><span style="color:#C0392B;font-weight:700;">⚠️ 퇴근 기록이 없습니다 — 위 퇴근 칸에 실제로 퇴근한 시각을 적어 주세요 (그 시각까지 야근으로 셉니다 · 자정을 넘겼으면 00:30처럼)</span>'
         :'<br><span class="muted">아직 퇴근 전 — 인정하면 퇴근을 누른 시각까지 야근으로 셉니다</span>')
       +(r.otBy==='dev'?'<br><span class="muted">관리자·공용 기기에서 입력한 신청</span>':'')
@@ -2331,8 +2331,8 @@ function saveRec(){
       }
     }
     // 퇴근 칸을 그대로 두고 저장 — 야근 신청이 있는데 실제 퇴근 시각을 모르는 날이면 '정시 퇴근이 맞는가' 한 번 묻는다(맞으면 그 시각을 실제로 남겨 경고를 끈다)
-    if(!_outChg&&o&&!hol&&prev.otE&&prev.otOk!==0&&otActAbs(_e,prev)==null&&o===_e.schedule.end&&!otPunchOpen(_e,prev,recDate)
-      &&confirm(`이날은 야근 신청이 있는데 실제로 퇴근한 시각을 모릅니다.\n\n[확인] ${o}에 퇴근한 것이 맞습니다 — 야근 0분으로 정리합니다\n[취소] 모릅니다 — 그대로 둡니다 (알게 되면 퇴근 칸에 실제 시각을 적어 주세요)`))nr.outAt=o;
+    if(!_outChg&&o&&!hol&&prev.otE&&prev.otOk!==0&&otActAbs(_e,prev)==null&&i===(prev.in||'')
+      &&confirm(`이날은 야근 신청이 있는데 실제로 퇴근한 시각을 모릅니다.\n\n[확인] ${o}에 퇴근한 것이 맞습니다 — 야근 ${fmtHM(Math.max(0,otEndAbs(_e,o)-schedEndAbs(_e)))}${otPunchOpen(_e,prev,recDate)?' (이제 직원이 퇴근을 다시 누를 수 없습니다)':''}\n[취소] 모릅니다 — 그대로 둡니다 (알게 되면 퇴근 칸에 실제 시각을 적어 주세요)`))nr.outAt=o;
     // 인정한 야근·휴일근무가 이 퇴근 때문에 줄어들면 한 번 묻는다 — 잊은 퇴근을 '정시로 채우기'(18:00)로 메우면 인정분이 0이 되던 것 (마지막 점검)
     if(_outChg&&o&&!_asked){
       // 야근 신청(대기·인정)이 있는 날인데 실제 퇴근을 모른다 — 정해진 퇴근시간 이하로 채우면(정시로 채우기) 야근이 0분이 된다. 한 번 묻고, [취소]는 저장하지 않는다
@@ -3072,7 +3072,7 @@ function renderSettle(y,m){
     &&(!e.leaveDate||e.leaveDate>=`${y}-${String(m+1).padStart(2,'0')}-01`));
   if(!emps.length)return '';
   const rows=emps.map(e=>settleOne(e,y,m));
-  const totWait=rows.reduce((s,r)=>s+r.wait,0), totNeed=rows.reduce((s,r)=>s+(r.need||0),0);
+  const totWait=rows.reduce((s,r)=>s+r.wait,0), totNeed=rows.reduce((s,r)=>s+(r.need||0),0), totRun=rows.reduce((s,r)=>s+(r.run||0),0);
   const totOt=rows.reduce((s,r)=>s+r.ot,0);
   const totLate=rows.reduce((s,r)=>s+r.lateCnt,0);
   const totAbs=rows.reduce((s,r)=>s+r.absent,0);
@@ -3081,11 +3081,12 @@ function renderSettle(y,m){
   let h=`<div class="card" style="background:var(--purple);color:#fff;padding:14px;">
     <div style="font-size:13px;opacity:.85;">📋 ${m+1}월 월말 정산</div>
     <div style="font-size:21px;font-weight:800;margin-top:3px;">
-      ${totWait?`확인할 것 ${totWait}건`:'모두 확인 완료 ✓'}</div>
+      ${totWait?`확인할 것 ${totWait}건${totRun?` · 야근 중 ${totRun}건`:''}`:totRun?`야근 중 ${totRun}건 — 퇴근 뒤 다시 확인`:'모두 확인 완료 ✓'}</div>
     <div style="font-size:12.5px;opacity:.8;margin-top:5px;">
       야근·휴일 ${totOt?fmtHM(totOt):'0분'} · 연차 ${num1(totLv)}일 · 지각 ${totLate}회 · 결근 ${totAbs}회</div>
   </div>`;
 
+  if(totRun)h+=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);font-size:13px;">⚠️ 지금 야근 중인 인정 야근이 ${totRun}건 있습니다 — 퇴근을 누르면 그 시각까지 잡힙니다. 퇴근한 뒤 다시 확인하세요.</div>`;
   if(totWait){
     h+=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
       <div style="font-weight:800;margin-bottom:6px;">⏳ 아직 확인하지 않은 건</div>
@@ -4249,7 +4250,10 @@ async function flushPending(){
           (it.fk||[]).forEach(k=>{ if(!(k in diff))diff[k]=(rec[k]===undefined?null:rec[k]); });   // 꼭 보낼 칸 (신청을 바꾸거나 지우면 결정도 지운다)
           // 이 기기가 내린 결정 — 바탕과 다르게 정했거나, 답이 끊긴 지난 결정과 다르게 다시 정했다. 결정을 지운 것(다시 신청)은 이 기기의 결정이 아니다
           const Jd=x=>JSON.stringify(x===null?undefined:x);
-          const myDec=rec.otOk!=null&&(('otOk' in own)||('okV' in own)||(!!it.mb&&(('otOk' in it.mb)||('okV' in it.mb))&&Jd([rec.otOk,rec.okV])!==Jd([it.mb.otOk,it.mb.okV])));
+          const Sv0=x=>x==null?'∅':JSON.stringify(x), MS0=it.mbs||{};   // 이 기기가 보낸 적 있는 값(닿았는지 모르는 것까지 모두)
+          const triedOther=(MS0.otOk||[]).some(v=>v!==Sv0(rec.otOk))||(MS0.okV||[]).some(v=>v!==Sv0(rec.okV));   // 지금과 다른 결정을 보낸 적이 있다 — 다시 정했다
+          const myDec=rec.otOk!=null&&(('otOk' in own)||('okV' in own)||(!!it.mb&&(('otOk' in it.mb)||('okV' in it.mb))&&Jd([rec.otOk,rec.okV])!==Jd([it.mb.otOk,it.mb.okV]))||triedOther);
+          let wd=false;                                    // 서버에 남은 '내가 보냈던 결정'을 거둔다
           const decIn=('otOk' in diff)||('okV' in diff);
           if(it.mb||decIn){
             // 지난번 보낸 것이 서버에 닿았는지 모른다(it.mb) — 또는 인정·반려 칸을 보낸다(decIn) — 서버의 지금 모양을 먼저 읽고 (검토 V3·V4, 마지막 점검, 2026-11-23 검토)
@@ -4264,7 +4268,7 @@ async function flushPending(){
             //    이 기기의 바탕 뒤에 다른 기기가 내린 것이면 지우지 않는다. 단 평일에 신청이 없는 기록에 남은 결정(취소된 신청에 내린 결정)은 지운다
             const cur=(await cfetch('/recs/'+it.d+'/'+it.e))||{}, J=x=>JSON.stringify(x===null?undefined:x), hasB=!!it.b, B=it.b||{}, M=it.mb||{};   // hasB: 바탕을 안다(모르면 '나중에 바뀐 칸'을 가릴 수 없다)
             if(it.mb){
-              Object.keys(it.mb).forEach(k=>{ if(!(k in diff)&&J(rec[k])!==J(it.mb[k]))diff[k]=(rec[k]===undefined?null:rec[k]); });
+              Object.keys(it.mb).forEach(k=>{ if(!(k in diff)&&(J(rec[k])!==J(it.mb[k])||((it.mbs||{})[k]||[]).some(v=>v!==Sv0(rec[k]))))diff[k]=(rec[k]===undefined?null:rec[k]); });   // 바탕으로 되돌린 칸도
               // 서버 값이 바탕도, 이 기기가 보낸 적 있는 값(it.mbs — 닿았는지 모르는 것까지 모두)도 아니면 다른 기기가 바꾼 것
               if(hasB){ const Sv=x=>x==null?'∅':JSON.stringify(x), MS=it.mbs||{};
                 Object.keys(diff).forEach(k=>{ if(k==='otOk'||k==='okV')return; const c=Sv(cur[k]); if(c!==Sv(B[k])&&c!==Sv(M[k])&&!(MS[k]||[]).includes(c))delete diff[k]; }); }
@@ -4274,13 +4278,16 @@ async function flushPending(){
             const A=(a,b)=>JSON.stringify([a||null,b||null]), recApp=A(rec.otE,rec.otMemo);
             if(myDec){
               const aft=A(('otE' in diff)?diff.otE:cur.otE,('otMemo' in diff)?diff.otMemo:cur.otMemo);   // 이번에 보낸 뒤 서버에 남을 신청
-              if(!hol&&aft!==recApp&&('otOk' in diff||'okV' in diff)){ delete diff.otOk; delete diff.okV; decDrop++; adopt=JSON.parse(JSON.stringify(cur)); }
+              if(!hol&&aft!==recApp&&('otOk' in diff||'okV' in diff)){ delete diff.otOk; delete diff.okV; decDrop++; adopt=JSON.parse(JSON.stringify(cur));
+                // 서버의 결정이 이 기기가 보냈다가 마음을 바꾼 결정이면 — 새 신청에 붙어 있지 않게 거둔다(확인 대기)
+                if(cur.otOk!=null&&(MS0.otOk||[]).includes(Sv0(cur.otOk))&&(MS0.okV||[]).includes(Sv0(cur.okV))&&J([cur.otOk,cur.okV])!==J([rec.otOk,rec.okV]))wd=true; }
             }else if(cur.otOk!=null&&okFor(cur,hol?holSig(rec):otSig(rec))){
-              const dc=J([cur.otOk,cur.okV]), later=hasB&&dc!==J([B.otOk,B.okV])&&dc!==J([M.otOk,M.okV]);
-              if(cur.otE&&(A(cur.otE,cur.otMemo)===recApp||later)){ delete diff.otOk; delete diff.okV; }   // 휴일도 같다 — 지우려는 결정을 그대로 두면 다시 신청·취소가 서버에 안 갔다
+              const dc=J([cur.otOk,cur.okV]), later=hasB&&dc!==J([B.otOk,B.okV])&&dc!==J([M.otOk,M.okV])&&!((MS0.otOk||[]).includes(Sv0(cur.otOk))&&(MS0.okV||[]).includes(Sv0(cur.okV)));
+              if(cur.otE?(A(cur.otE,cur.otMemo)===recApp||later):(hol&&later)){ delete diff.otOk; delete diff.okV; }   // 휴일 출근만 있는 기록의 결정도 바탕 뒤 다른 기기 것이면 지킨다   // 휴일도 같다 — 지우려는 결정을 그대로 두면 다시 신청·취소가 서버에 안 갔다
             }
           }
           if('otOk' in diff||'okV' in diff){ diff.otOk=(rec.otOk===undefined?null:rec.otOk); diff.okV=(rec.okV===undefined?null:rec.okV); }   // 결정과 본 값은 늘 한 묶음
+          if(wd){ diff.otOk=null; diff.okV=null; }
           att=diff;
           if(Object.keys(diff).length)await cfetch('/recs/'+it.d+'/'+it.e,{method:'PATCH',body:JSON.stringify(diff)});
         }
@@ -5178,7 +5185,9 @@ function otrCalc(){
   if(!e||!v){ box.innerHTML=''; return; }
   { const ds=window._otDs, r=ds?recOf(ds,window._otEmp):null;   // 휴일 — 출근부터 마친 시각까지(점심 1시간 뺌)
     if(r&&r.in&&!isWorkday(e,new Date(ds+'T00:00:00'))){ const rr=Object.assign({},r,{otE:v}), hm=holSpanMin(e,rr), cap=holEndAbs(e,rr)<otEndAbs(e,v);
-      box.innerHTML=hm>0?`<span style="color:var(--purple);">휴일근무 ${fmtHM(hm)} (${esc(r.in)} ~ ${esc(holEndTxt(e,rr))})${cap?` — 퇴근을 누른 ${esc(holEndTxt(e,rr))}까지만 셉니다`:''}</span>`:'<span class="muted" style="font-weight:400;">출근보다 늦은 시각을 골라 주세요</span>'; return; } }
+      box.innerHTML=hm>0?`<span style="color:var(--purple);">휴일근무 ${fmtHM(hm)} (${esc(r.in)} ~ ${esc(holEndTxt(e,rr))})${cap?` — 퇴근을 누른 ${esc(holEndTxt(e,rr))}까지만 셉니다`:''}</span>`
+        :(cap&&holSpanMin(e,{in:r.in,otE:v})>0)?`<span class="muted" style="font-weight:400;">퇴근을 ${esc(holEndTxt(e,rr))}에 눌러 지금은 0분입니다 — 잘못 눌렀으면 [↩️ 잘못 눌렀어요]로 퇴근을 취소하거나 관리자에게 말씀해 주세요</span>`
+        :'<span class="muted" style="font-weight:400;">출근보다 늦은 시각을 골라 주세요</span>'; return; } }
   const m=otEndAbs(e,v)-schedEndAbs(e);
   box.innerHTML=m>0?`<span style="color:var(--purple);">예정 야근 ${fmtHM(m)}${toMin(v)<toMin(e.schedule.start)?' (다음 날 새벽까지)':''}</span>`
                    :'<span class="muted" style="font-weight:400;">퇴근시간 이전이라 야근이 아닙니다</span>';
