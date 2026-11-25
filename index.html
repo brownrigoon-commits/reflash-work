@@ -362,15 +362,17 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 
   <!-- ============ 연차 관리 ============ -->
   <div class="page" id="pg-leave">
-    <h2 class="sec">연차 관리</h2>
+    <h2 class="sec">연차 · 야근</h2>
     <div class="pick">
       <button onclick="leaveMove(-1)">‹</button>
       <span id="leaveLabel"></span>
       <button onclick="leaveMove(1)">›</button>
     </div>
     <button class="btn p wide" id="btnLeaveReq" onclick="openLvReq()">🌴 연차 · 반차 신청하기</button>
-    <button class="btn y wide" id="btnReqMore" style="margin-top:8px;" onclick="openReqPick()">✋ 그 밖의 신청 (야근 · 조퇴 · 늦은 출근 · 외출)</button>
+    <button class="btn p wide" id="btnOtReq" style="margin-top:8px;background:#2E2470;" onclick="openOtReq()">🌙 야근 신청하기 (몇 시간 · 작업 내용)</button>
+    <button class="btn y wide" id="btnReqMore" style="margin-top:8px;" onclick="openReqPick()">✋ 그 밖의 신청 (조퇴 · 늦은 출근 · 외출)</button>
     <button class="btn y wide" id="btnLeaveAdd" style="margin-top:8px;" onclick="openLeaveForm()">＋ 연차 · 반차 등록 (관리자)</button>
+    <button class="btn y wide" id="btnOtAdd" style="margin-top:8px;display:none;" onclick="openOtReq({mode:'admin'})">＋ 야근 등록 (관리자 — 바로 승인)</button>
     <div id="leaveWaitBox" style="margin-top:14px;"></div>
     <div id="leaveBody" style="margin-top:14px;"></div>
   </div>
@@ -529,7 +531,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
     <button class="btn p" style="flex:1;" id="btnIn" onclick="doPunch('in')">출근하기</button>
     <button class="btn y" style="flex:1;" id="btnOut" onclick="doPunch('out')">퇴근하기</button>
   </div>
-  <button id="btnOtRpt" class="btn y wide" style="margin-top:8px;display:none;" onclick="otRptOpen()">🌙 야근 신청하기</button>
+  <button id="btnOtRpt" class="btn y wide" style="margin-top:8px;display:none;" onclick="otAfterOpen()">🌙 야근 신청 (퇴근 뒤 더 한 시간)</button>
   <button id="btnUndo" class="btn red wide" style="margin-top:8px;display:none;" onclick="undoPunch()">↩️ 잘못 눌렀어요 — 기록 취소</button>
   <button class="btn ghost wide" style="margin-top:10px;" onclick="closeM('mdPunch')">닫기</button>
 </div></div>
@@ -641,6 +643,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
       <button class="btn ghost" style="flex:1;padding:9px;font-size:13px;" onclick="rptReject()">반려</button>
     </div>
   </div>
+  <div id="recOtItems" style="display:none;margin-top:10px;padding:11px 12px;border-radius:10px;background:#EEF2FF;border:1.5px solid #4F46E5;"></div>
   <div id="recOtBox" style="display:none;margin-top:10px;padding:11px 12px;border-radius:10px;background:#EEF2FF;border:1.5px solid #4F46E5;">
     <div id="recOtHead" style="font-weight:800;font-size:13.5px;margin-bottom:4px;">🌙 야근 신청이 있습니다</div>
     <div id="recOtTxt" style="font-size:13px;line-height:1.6;"></div>
@@ -691,6 +694,26 @@ body.no-scroll{overflow:hidden;touch-action:none;}
   <div class="muted" id="reqPickSub">고르면 다음 화면에서 날짜와 시각을 넣습니다. 관리자가 확인하면 승인됩니다.</div>
   <div id="reqPickBox" style="margin-top:14px;"></div>
   <button class="btn ghost wide" style="margin-top:12px;" onclick="closeM('mdReqPick')">닫기</button>
+</div></div>
+
+<!-- 야근 신청 — 몇 시간 · 작업 내용 → 관리자 승인 (2026-11-26) -->
+<div class="modal-bg" id="mdOtReq"><div class="modal">
+  <button class="modal-back" onclick="closeM('mdOtReq')">‹</button>
+  <h3 id="oqTitle">🌙 야근 신청</h3>
+  <div class="muted" id="oqSub"></div>
+  <div id="oqEmpBox" style="display:none;"><label class="f">직원</label><select id="oqEmp" onchange="oqCalc()"></select></div>
+  <label class="f">날짜</label>
+  <input type="date" id="oqDate" onchange="oqCalc()">
+  <label class="f">몇 시간 하나요? (30분 단위)</label>
+  <select id="oqMin" onchange="oqCalc()"></select>
+  <label class="f">작업 내용</label>
+  <input type="text" id="oqMemo" placeholder="예: 출고 마감 정리 · 재고 실사" maxlength="60">
+  <div id="oqCalcBox" style="margin-top:10px;font-weight:800;text-align:center;"></div>
+  <div class="muted" id="oqNote" style="margin-top:8px;"></div>
+  <div class="row" style="margin-top:16px;">
+    <button class="btn p" style="flex:1;" id="oqSave" onclick="saveOtReq()">신청하기</button>
+    <button class="btn ghost" style="flex:1;" onclick="closeM('mdOtReq')">닫기</button>
+  </div>
 </div></div>
 
 <!-- 그 밖의 신청 — 내용 넣기 (직원 본인) -->
@@ -755,7 +778,7 @@ body.no-scroll{overflow:hidden;touch-action:none;}
 /* ================== 데이터 ================== */
 const LS='reflash_tna_v1';
 /* ── 자동 업데이트: 배포된 새 버전을 감지하면 스스로 새로고침 (10분 캐시 대기 불필요) ── */
-const APP_VER='20261123_155246'; // 배포판_생성.py가 빌드 시각으로 교체
+const APP_VER='20261126_031420'; // 배포판_생성.py가 빌드 시각으로 교체
 window._doReload=u=>location.replace(u);
 async function checkUpdate(){
   if(APP_VER==='dev'||!/^https?:/.test(location.protocol))return;
@@ -920,7 +943,7 @@ function openPunch(id){
   {
     const _hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
     let _tip;
-    if(_pds!==todayStr())_tip=`자정을 넘겨 일하는 중입니다 — 퇴근을 누르면 어제(${_pds.slice(5).replace('-','.')}) 기록에 남고, `+((r&&r.otE)?'누른 시각까지 야근으로 잡힙니다(인정되면)':'야근 신청 창이 뜹니다');
+    if(_pds!==todayStr())_tip=`자정을 넘겨 일하는 중입니다 — 퇴근을 누르면 어제(${_pds.slice(5).replace('-','.')}) 기록에 남습니다`;
     else if(!isWorkday(e,new Date()))_tip='오늘은 근무일이 아닙니다 — 찍으면 휴일근무로 기록됩니다';
     else if(r&&r.in&&!r.out){
       const _lv=leaveOn(todayStr(),e.id);
@@ -928,7 +951,8 @@ function openPunch(id){
         :(_lv&&_lv.t==='full')?'오늘은 연차가 확정된 날입니다 — 일찍 퇴근해도 조퇴가 아닙니다'
         :`퇴근은 ${_hm(Math.max(0,toMin(e.schedule.end)-GRACE_MIN))} 이후에 누르면 ${e.schedule.end} 정시로 기록됩니다`
          +` · 그보다 일찍 누르면 누른 시각 그대로 남고 ${earlyCost(e,true)}`;
-      if(r.otE)_tip='🌙 야근 신청한 날 — 일을 마치고 퇴근을 누른 시각까지가 야근입니다(인정되면) · '+_tip;
+      { const _ap=otApprMin(e,todayStr()), _wp=otWaitItems(e,todayStr()).length;   // 오늘 승인된 야근 — 출퇴근과 따로 그 시간만큼 잡힌다
+        if(_ap)_tip=`🌙 오늘 승인된 야근 ${fmtHM(_ap)} · `+_tip; else if(_wp)_tip='🌙 오늘 야근 신청이 확인 대기 중입니다 · '+_tip; }
     }
     else if(!r||!r.in)
       _tip=`출근은 ${e.schedule.start}~${_hm(toMin(e.schedule.start)+GRACE_MIN)} 사이에 누르면 정시 출근입니다`;
@@ -952,8 +976,13 @@ function openPunch(id){
     else bu.style.display='none';
   }
   const bot=document.getElementById('btnOtRpt');
-  if(bot){ // 출근 기록이 있으면 야근을 신청할 수 있다
-    if(r&&r.in){ bot.style.display='block'; bot.textContent=r.otE?`🌙 야근 신청함 (${otStTxt(e,r,_pds)}) — 보기·고치기`:'🌙 야근 신청하기'; }
+  if(bot){ // 퇴근을 누른 뒤에만 — 계획에 없이 더 한 시간을 따로 신청한다 (대표님 2026-11-26: 퇴근 버튼이 아니라 출퇴근 카드에서, 6시 퇴근을 누른 뒤에)
+    const _ad=otAfterDay(e), ra=recOf(_ad,e.id), _yd=_ad!==todayStr()?`어제(${_ad.slice(5).replace('-','.')}) `:'';   // 자정 넘겨 어제 기록에 퇴근했으면 어제 것
+    if(ra&&ra.in&&ra.out&&!otAutoOpen(ra)&&isWorkday(e,new Date(_ad+'T00:00:00'))){
+      const its=otItemsOn(e.id,_ad).filter(x=>x.st!=='x');
+      bot.style.display='block';
+      bot.textContent=its.length?`🌙 ${_yd}야근 신청함 (${its.map(x=>fmtHM(otItemMin(x))+(x.st==='w'?' 대기':' 승인')).join(' · ')}) — 더 신청하기`:`🌙 ${_yd}야근 신청 (퇴근 뒤 더 한 시간)`;
+    }
     else bot.style.display='none';
   }
   tick(); openM('mdPunch');
@@ -1030,17 +1059,8 @@ async function doPunch(kind){
   DB.records[ds][punchEmpId]=r; save(); queueRec(ds,punchEmpId); pushEvent(kind,punchEmpId,hm); closeM('mdPunch'); renderKiosk();
   if(kind==='in'&&window._askLate){ const pid=punchEmpId, pt=window._askLate; window._askLate=null;
     setTimeout(()=>lateRptOpen(pid,ds,pt),400); }                // 늦게 찍었으면 실제 도착시각 물어보기
-  if(kind==='out'&&r.otOut&&!r.otE){ const pid=punchEmpId;
-    setTimeout(()=>otRptOpen(pid,ds),400); }                     // 늦게 찍었으면 바로 야근 신청받기
-  else if(kind==='out'&&r.otE&&isWorkday(e,new Date(ds+'T00:00:00'))){   // 야근을 신청한 평일 — 퇴근을 누른 시각까지가 야근 (인정되면)
-    const _a=otActAbs(e,r), m=Math.max(0,(_a!=null?_a:toMin(r.out))-schedEndAbs(e)), dec=otDecided(r,otSig(r));
-    const msg=(dec&&r.otOk===0)?'반려된 야근 신청입니다 — 다시 신청하려면 [🌙 야근 신청함]에서 고쳐 주세요'
-      :m>0?`야근 ${fmtHM(m)} — ${(dec&&r.otOk===1)?'인정된 신청이라 야근으로 잡힙니다':'관리자가 인정하면 야근으로 잡힙니다'}`
-      :(r.out===e.schedule.end?'정시 퇴근 — 야근은 0분입니다':'퇴근시간 전에 퇴근해 야근은 0분입니다');
-    setTimeout(()=>toast(msg),1800); }
-  else if(kind==='out'&&r.otE){ const pid=punchEmpId;            // 휴일 — 적어 둔 마친 시각까지 센다: 그보다 30분 넘게 일찍 퇴근하면 고치게 한다
-    const a0=toMin(r.in), nx=x=>{ const v=toMin(x); return v<a0?v+1440:v; }, act=nx(r.outAt||r.otOut||r.out);
-    if(otEndAbs(e,r.otE)-act>=OT_MIN)setTimeout(()=>{ otRptOpen(pid,ds); toast(`적어 둔 마친 시각(${otEndTxt(e,r.otE)})보다 일찍 퇴근하셨습니다 — 마친 시각을 고쳐 주세요`); },400); }
+  // 퇴근을 누를 때 야근 신청 창·안내는 띄우지 않는다 (대표님 2026-11-26: "퇴근할 때 야근 신청은 그쪽에 놓지 말 것")
+  // — 야근은 [🌴 연차] 탭에서 미리 신청하고, 계획에 없던 시간은 퇴근을 누른 뒤 출퇴근 창의 [🌙 야근 신청]으로 따로 신청한다
   showPunchPop(kind,punchEmpId); // 도시락 +1(출근 시) + 이름 부르는 날씨 인사말
 }
 function undoPunch(){ // 잘못 누른 출퇴근 되돌리기 (오늘 기록, 마지막 단계부터)
@@ -1309,12 +1329,47 @@ const LV_START='2026-11-01';
 /* 연차 말고도 직원이 알려야 하는 상황들. 같은 서랍(leaves.items)에 k 꼬리표를 달아 담는다.
    **k 가 있으면 연차가 아니다** — leaveLive() 가 걸러내므로 급여·결근 계산에 들어가지 않는다.
    그 대신 연차의 다져진 장치(동기화·재전송·충돌해결·승인·알림)를 그대로 쓴다. */
-const REQ_NM={early:'조퇴 (일찍 퇴근)',late:'늦은 출근',out:'외출',hol:'휴일근무',etc:'기타'};
-const REQ_ICO={early:'🏃',late:'🕐',out:'🚶',hol:'🎌',etc:'✋'};
-const REQ_T1={early:'퇴근할 시각',late:'출근할 시각',out:'나가는 시각',hol:'출근 시각',etc:''};
+const REQ_NM={early:'조퇴 (일찍 퇴근)',late:'늦은 출근',out:'외출',hol:'휴일근무',etc:'기타',ot:'야근'};
+const REQ_ICO={early:'🏃',late:'🕐',out:'🚶',hol:'🎌',etc:'✋',ot:'🌙'};
+const REQ_T1={early:'퇴근할 시각',late:'출근할 시각',out:'나가는 시각',hol:'출근 시각',etc:'',ot:''};
+/* ── 야근 신청 (대표님 2026-11-26) ──
+   "몇 시간 할 건지 먼저 컨펌 받고 야근하는 겁니다. 그러면 그 시간만큼 추가" · "6시 퇴근을 누른 후에 따로 신청" · "야근은 수당이 달라 따로 계산"
+   연차와 같은 서랍에 k:'ot' 로 담는다: {e,d,k:'ot',m:야근 분(30분 단위),t1:예정 끝(참고),memo:작업 내용,
+     st:'w' 대기 | 'x' 반려 | 없음 = 승인, af:1 퇴근 뒤 신청, by:'dev' 관리자·공용 기기에서 적음}
+   평일 야근 = 그날 출근 기록이 있고, 승인된 신청의 시간(m) 합 — 퇴근을 누른 시각과는 상관없다.
+   (예전 판의 '출퇴근 기록에 붙은 야근'(otE·otOk)은 남은 것만 그대로 더한다.)
+   회사PC 급여대장 ot_item_min·ot_appr_min·ot_wait_items 와 같은 규칙. */
+const OT_STEP=30, OT_MAXM=720;
+function otItemMinOk(m){ return typeof m==='number'&&Number.isInteger(m)&&m>=OT_STEP&&m<=OT_MAXM&&m%OT_STEP===0; }
+function otItemMin(x){ return (x&&x.k==='ot'&&otItemMinOk(x.m))?x.m:0; }
+function otItemsOn(empId,ds){ // 그날 그 직원의 야근 신청 (지운 것 빼고, 올린 순서)
+  const it=leavesDB().items, o=[];
+  for(const id in it){ const x=it[id]; if(x&&!x.del&&x.k==='ot'&&x.e===empId&&x.d===ds)o.push(Object.assign({},x,{id})); }   // 확인된 열쇠를 마지막에
+  return o.sort((a,b)=>(a.ts||0)-(b.ts||0));
+}
+function otLegacyOn(e,ds){ return !otItemsOn(e.id,ds).some(x=>x.st!=='x'); }   // 새 방식 신청(반려 아닌 것)이 있는 날은 예전 판 기록의 야근(otE)을 세지 않는다 — 같은 저녁을 두 번 세지 않게
+function otItemSpan(e,x){ // 신청 1건의 시간대 — 예정 끝(t1)에서 거꾸로. 모르면 정해진 퇴근부터
+  const m=otItemMin(x), ea=(x&&x.t1&&safeHM(x.t1))?otEndAbs(e,x.t1):null;
+  if(ea==null||ea-m<schedEndAbs(e))return otSpanTxt(e,m);
+  const s=ea-m; return `${otHM(s)}~${(ea>=1440&&s<1440)?'다음 날 ':''}${otHM(ea)}`;
+}
+function otAfterDay(e){ // 퇴근 뒤 야근 신청을 받을 날 — 오늘 출근했으면 오늘, 자정을 넘겨 어제 기록에 퇴근했으면(오늘은 출근 전) 어제
+  const tds=todayStr(), r=recOf(tds,e.id);
+  if(r&&r.in)return tds;
+  const y=new Date(tds+'T00:00:00'); y.setDate(y.getDate()-1);
+  const yd=fmtD(y), yr=recOf(yd,e.id);
+  if(yr&&yr.in&&yr.out&&!yr.off){ const a=otActAbs(e,yr); if((a!=null&&a>=1440)||toMin(e.schedule.end)<=toMin(e.schedule.start))return yd; }
+  return tds;
+}
+function otLegacyMin(e,ds){ const r=recOf(ds,e.id); return (r&&r.in&&r.otE&&isWorkday(e,new Date(ds+'T00:00:00')))?otMin(e,r):0; }   // 예전 판 기록에 붙은 인정 야근(분) — 새 방식 신청이 있으면 세지 않는 것
+function otApprMin(e,ds){ return otItemsOn(e.id,ds).reduce((s,x)=>s+(x.st?0:otItemMin(x)),0); }   // 승인된 야근(분) — 평일·출근 여부는 부르는 쪽이 본다
+function otWaitItems(e,ds){ return otItemsOn(e.id,ds).filter(x=>x.st==='w'); }                       // 확인 대기 중인 야근 신청
+function otHM(v){ const x=((v%1440)+1440)%1440; return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0'); }
+function otSpanTxt(e,m,off){ const s=schedEndAbs(e)+(off||0), t=s+m; return `${otHM(s)}~${(t>=1440&&s<1440)?'다음 날 ':''}${otHM(t)}`; }   // off: 그날 앞서 신청한 시간 뒤부터
 function lvName(x){ return (x&&x.k)?(REQ_NM[x.k]||'신청'):(LEAVE_NM[(x||{}).t]||''); }
 function lvWhen(x){
   if(!x||!x.k)return '';
+  if(x.k==='ot'){ const e=emp(x.e), m=otItemMin(x); return ` ${fmtHM(m)}${e?` (${otItemSpan(e,x)})`:''}`; }
   if(x.k==='out'&&x.t1&&x.t2)return ` ${x.t1}~${x.t2}`;
   return x.t1?` ${x.t1}`:'';
 }
@@ -1414,6 +1469,9 @@ function lvClean(id,x){
   if(!isT(x.t)&&!isK(x.k))return null;
   ['t1','t2'].forEach(f=>{ if(x[f]!=null&&!safeHM(x[f]))delete x[f]; });
   if(x.memo!=null)x.memo=safeTxt(x.memo,200);
+  delete x.id;   // 열쇠는 바깥(확인된 id)만 쓴다 — 항목 안의 id 칸이 onclick 자리로 새던 것 (2026-11-26 검토)
+  delete x.sendErr;   // '서버가 거부함'은 그 기기만의 표시 — 서버에서 온 값은 믿지 않는다(다른 관리자 기기에 빨간 띠가 뜨고 승인이 막혔다)
+  if(x.k==='ot'){ if(!otItemMinOk(x.m))delete x.m; if(x.af!==1)delete x.af; if(x.by!=='dev')delete x.by; }   // 야근 신청: 분(30분 단위)·퇴근 뒤 표시·적은 곳
   if(x.st!=null&&x.st!=='w'&&x.st!=='x')delete x.st;
   if(typeof x.ts!=='number'||!isFinite(x.ts))x.ts=0;
   return x;
@@ -1438,7 +1496,7 @@ function leaveAnyOn(ds,empId){ // 대기 중인 연차까지 포함해 찾기 (�
 function leaveSendErr(empId){ // 서버에 올라가지 못한 신청 — 화면에서 사라지면 안 된다
   return Object.entries(leavesDB().items)
     .filter(([id,x])=>x&&!x.del&&x.sendErr&&(!empId||x.e===empId))
-    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
+    .map(([id,x])=>({...x,id})).sort((a,b)=>a.d<b.d?-1:1);
 }
 function leaveDayAny(ds,empId){ // 그날 연차 신청이 있었나 (확정·대기·반려 전부)
   const it=leavesDB().items;
@@ -1448,7 +1506,7 @@ function leaveDayAny(ds,empId){ // 그날 연차 신청이 있었나 (확정·�
 function leaveWaiting(empId){ // 승인 대기 목록
   return Object.entries(leavesDB().items)
     .filter(([id,x])=>x&&!x.del&&x.st==='w'&&(!empId||x.e===empId))
-    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?-1:1);
+    .map(([id,x])=>({...x,id})).sort((a,b)=>a.d<b.d?-1:1);
 }
 /* 그 달에 '승인하면 금액이 바뀌는' 대기 건수.
    leaveWaiting() 은 승인 화면이 쓰는 **전체 큐**라 달도 k 도 안 가린다 —
@@ -2106,7 +2164,13 @@ function statusMove(dir){
   renderStatus();
 }
 /* 현황표의 야근 표시 — 인정된 야근만 🌙, 신청 대기 ⏳, 반려 ✗. 신청 없이 늦게 찍은 시각은 참고로만 (2026-11-20) */
-function otTagHtml(e,r,ds){
+function otTagHtml(e,r,ds){ return (otLegacyOn(e,ds)?otTagLegacy(e,r,ds):'')+otItemTag(e,r,ds); }   // 새 방식 신청이 있는 날은 예전 판 표시를 숨긴다(세지 않으므로)
+function otItemTag(e,r,ds){ // 야근 신청(새 방식) — 승인된 시간 · 확인 대기
+  if(!r||!r.in||!isWorkday(e,new Date(ds+'T00:00:00')))return '';
+  const its=otItemsOn(e.id,ds), ap=its.reduce((s,x)=>s+(x.st?0:otItemMin(x)),0), wp=its.filter(x=>x.st==='w').reduce((s,x)=>s+otItemMin(x),0);
+  return (ap?`<br><span class="tag ok">🌙 야근 ${fmtHM(ap)} 승인</span>`:'')+(wp?`<br><span class="tag man">⏳ 야근 신청 ${fmtHM(wp)}</span>`:'');
+}
+function otTagLegacy(e,r,ds){ // 예전 판 — 출퇴근 기록에 붙은 야근 신청(otE)
   if(!r||!r.in)return '';
   if(!isWorkday(e,new Date(ds+'T00:00:00')))return (r.outAt||r.otOut)?`<br><span class="tag man">퇴근 누름 ${esc(r.outAt||r.otOut)}</span>`:'';
   if(r.otE){
@@ -2119,14 +2183,15 @@ function otTagHtml(e,r,ds){
     { const a=otActAbs(e,r);
       return `<br><span class="tag man">⏳ ${a==null?`야근 신청 ~${x}`:a>schedEndAbs(e)?`야근 ~${esc(otCapTxt(e,r))} · 확인 대기`:`야근 신청 · 퇴근 ${esc(otCapTxt(e,r))}(0분) · 확인 대기`}</span>`; }
   }
-  return r.otOut?`<br><span class="muted" style="font-size:11px;">늦게 누름 ${esc(r.otOut)} · 신청 없음</span>`:'';
+  return (r.otOut&&!otItemsOn(e.id,ds).length)?`<br><span class="muted" style="font-size:11px;">늦게 누름 ${esc(r.otOut)} · 신청 없음</span>`:'';
 }
-function otMark(e,r,wd,ds){ // 주간표 한 글자 — 인정된 야근·휴일근무 🌙 · 확인 대기 ⏳ · 인정했지만 퇴근 시각이 없음 ⚠️
+function otMark(e,r,wd,ds){ // 주간표 한 글자 — 승인·인정된 야근·휴일근무 🌙 · 확인 대기 ⏳ · 인정했지만 퇴근 시각이 없음 ⚠️
   if(!r||!r.in)return '';
   if(!wd)return holMin(e,r)>0?'🌙':(holPendMin(e,r)>0?'⏳':'');
-  if(!r.otE)return '';
-  if(ds&&otNeedEnd(e,r,ds))return '⚠️';
-  return otDecided(r,otSig(r))?((r.otOk===1&&otMin(e,r)>0)?'🌙':''):'⏳';
+  const its=ds?otItemsOn(e.id,ds):[], ap=its.some(x=>!x.st&&otItemMin(x)>0), wp=its.some(x=>x.st==='w');
+  let lg='';
+  if(r.otE&&(!ds||otLegacyOn(e,ds)))lg=(ds&&otNeedEnd(e,r,ds))?'⚠️':otDecided(r,otSig(r))?((r.otOk===1&&otMin(e,r)>0)?'🌙':''):'⏳';
+  return lg==='⚠️'?'⚠️':(wp||lg==='⏳')?'⏳':(ap||lg==='🌙')?'🌙':'';   // 할 일(⚠️·⏳)이 먼저 보이게
 }
 function renderStatus(){
   const lb=document.getElementById('statusLabel'), body=document.getElementById('statusBody');
@@ -2197,13 +2262,25 @@ function openRec(id,ds){
   const r=recOf(ds,id)||{};
   document.getElementById('recTitle').textContent=`${emp(id).name} · ${ds}`;
   document.getElementById('recSub').innerHTML='출퇴근 시각을 직접 입력합니다.'
-    +(r.otOut?`<br>🌙 실제 퇴근을 누른 시각: <b>${esc(r.otOut)}</b>`+((!r.otE&&isWorkday(emp(id),new Date(ds+'T00:00:00')))?' — 야근 신청이 없어 야근으로 세지 않습니다':''):'')
-    +((!r.otE&&r.in&&isWorkday(emp(id),new Date(ds+'T00:00:00')))?'<br><a href="javascript:void(0)" onclick="otProxy()">🌙 야근 신청 대신 입력</a> <span class="muted">— 앱이 없는 직원이 말로·종이로 신청한 경우</span>':'')
+    +(r.otOut?`<br>🌙 퇴근을 누른 시각: <b>${esc(r.otOut)}</b>`+((!r.otE&&!otItemsOn(id,ds).length&&isWorkday(emp(id),new Date(ds+'T00:00:00')))?' — 야근 신청이 없어 야근으로 세지 않습니다':''):'')
+    +(isWorkday(emp(id),new Date(ds+'T00:00:00'))?'<br><a href="javascript:void(0)" onclick="otProxy()">🌙 야근 등록 (관리자 — 바로 승인)</a> <span class="muted">— 앱이 없는 직원 · 말로 정한 야근</span>':'')
     +(leaveOn(ds,id)?`<br>🌴 이날은 <b>${LEAVE_NM[leaveOn(ds,id).t]}</b> 등록일입니다`:'');
   document.getElementById('recIn').value=r.in||'';
   document.getElementById('recOut').value=r.out||'';
   document.getElementById('btnOtClear').style.display=r.otOut?'block':'none';
   const ob=document.getElementById('recOtBox');
+  { const ob2=document.getElementById('recOtItems'), its=otItemsOn(id,ds), e1=emp(id);   // 야근 신청(새 방식) — 승인한 시간만큼 야근
+    if(ob2){ if(!its.length||!isWorkday(e1,new Date(ds+'T00:00:00'))){ ob2.style.display='none'; ob2.innerHTML=''; }
+      else{ ob2.style.display='block';
+        const mo=cur=>{ let s=''; for(let m=OT_STEP;m<=OT_MAXM;m+=OT_STEP)s+=`<option value="${m}"${m===cur?' selected':''}>${fmtHM(m)}</option>`; return s; };
+        const rx=recOf(ds,id), pt=rx&&(rx.outAt||rx.otOut);
+        ob2.innerHTML=`<div style="font-weight:800;font-size:13.5px;margin-bottom:4px;">🌙 야근 신청 — 승인한 시간만큼 야근</div>`
+          +`<div class="muted" style="font-size:12px;">${rx&&rx.out?`퇴근 ${esc(rx.out)}${pt&&pt!==rx.out?` · 누른 시각 ${esc(pt)}`:''} (참고 — 야근 시간은 승인한 시간으로 셉니다)`:'아직 퇴근 기록 없음 (야근 시간은 승인한 시간으로 셉니다)'}</div>`+its.map(x=>{
+          const m=otItemMin(x), st=x.st==='w'?'<span style="color:#D95B23;font-weight:700;">⏳ 확인 대기</span>':x.st==='x'?'<span style="color:#C0392B;font-weight:700;">✗ 반려</span>':'<span style="color:#1E7F4F;font-weight:700;">✓ 승인</span>';
+          return `<div style="padding:7px 0;border-top:1px dashed #C7CBF5;font-size:13px;line-height:1.6;"><b>${fmtHM(m)}</b> (${otItemSpan(e1,x)}) ${st}${x.af?' <span class="tag man">퇴근 뒤 신청</span>':''}${x.by==='dev'?' <span class="tag man">관리자·공용 기기</span>':''}${x.memo?`<br>작업: ${esc(x.memo)}`:''}
+            <div class="row" style="margin-top:6px;gap:6px;">${x.st==='w'?`<button class="btn p" style="flex:1;padding:8px;font-size:12.5px;" onclick="otItemAct('${x.id}','ok')">승인</button><button class="btn ghost" style="flex:1;padding:8px;font-size:12.5px;" onclick="otItemAct('${x.id}','no')">반려</button>`
+              :x.st==='x'?`<button class="btn ghost" style="flex:1;padding:8px;font-size:12.5px;" onclick="otItemAct('${x.id}','ok')">다시 승인</button>`
+              :`<select style="flex:1;" onchange="otItemAct('${x.id}','min',this.value)">${mo(m)}</select><button class="btn ghost" style="flex:1;padding:8px;font-size:12.5px;" onclick="otItemAct('${x.id}','no')">승인 취소</button>`}</div></div>`; }).join(''); } } }
   const holWork=!isWorkday(emp(id),new Date(ds+'T00:00:00'))&&!!r.in;
   const oh=document.getElementById('recOtHead'), e0=emp(id);
   window._recSeen=otSeen(r);                         // [인정]·[반려]를 누를 때 이 화면이 본 내용 그대로인지 확인한다
@@ -2233,7 +2310,8 @@ function openRec(id,ds){
         :(ds<todayStr()&&!otPunchOpen(e0,r,ds))?'<br><span style="color:#C0392B;font-weight:700;">⚠️ 퇴근 기록이 없습니다 — 위 퇴근 칸에 실제로 퇴근한 시각을 적어 주세요 (그 시각까지 야근으로 셉니다 · 자정을 넘겼으면 00:30처럼)</span>'
         :'<br><span class="muted">아직 퇴근 전 — 인정하면 퇴근을 누른 시각까지 야근으로 셉니다</span>')
       +(r.otBy==='dev'?'<br><span class="muted">관리자·공용 기기에서 입력한 신청</span>':'')
-      +otDecHtml(r,otSig(r),'야근에서 제외','인정해야 야근으로 잡힙니다');
+      +otDecHtml(r,otSig(r),'야근에서 제외','인정해야 야근으로 잡힙니다')
+      +(otLegacyOn(e0,ds)?'':'<br><span style="color:#D95B23;font-weight:700;">⚠️ 이날은 새 방식 야근 신청이 있어 이 예전 신청은 세지 않습니다(같은 저녁을 두 번 세지 않게)</span>');
   } else ob.style.display='none';
   const box=document.getElementById('recRptBox');
   if(r.rin){
@@ -2299,7 +2377,7 @@ function saveRec(){
     if(i!==(prev.in||''))nr.in=i;
     // 늦게 찍힌 시각(otOut)·실제 시각(outAt)은 관리자가 퇴근 칸을 실제로 바꿨을 때만 손댄다 — 늦은 퇴근은 늘 정시로 저장되므로,
     // 다른 것(지각 정정 등)만 고쳐 저장해도 묻거나 지우던 것을 막는다 (검토 F2)
-    const _outChg=o!==(prev.out||''), _e=emp(recEmpId);
+    const _outChg=o!==(prev.out||''), _e=emp(recEmpId), _lgw=!hol&&otLegacyOn(_e,recDate);   // 새 방식 신청이 있는 날은 예전 판 야근을 세지 않는다 — 그 계산으로 묻지 않는다
     let _asked=false;
     if(_outChg){
       if(o&&!hol&&toMin(_e.schedule.end)>toMin(_e.schedule.start)&&nr.in&&toMin(o)<toMin(nr.in)){
@@ -2324,23 +2402,23 @@ function saveRec(){
           else nr.outAt=prev.outAt||_ot;
         }
       } else {
-        const _b0=hol?holMin(_e,prev):otMin(_e,prev);
+        const _b0=hol?holMin(_e,prev):(_lgw?otMin(_e,prev):0);
         delete nr.out; delete nr.outAt;
-        const _b1=hol?holMin(_e,nr):otMin(_e,nr);                 // 퇴근을 지워 인정분이 줄면 한 번 묻는다 (2026-11-23 검토)
+        const _b1=hol?holMin(_e,nr):(_lgw?otMin(_e,nr):0);        // 퇴근을 지워 인정분이 줄면 한 번 묻는다 (2026-11-23 검토)
         if(_b1<_b0&&!confirm(`퇴근을 지우면 인정한 ${hol?'휴일근무':'야근'}이 ${fmtHM(_b0)} → ${fmtHM(_b1)} 가 됩니다.\n그래도 지울까요?`))return;
       }
     }
     // 퇴근 칸을 그대로 두고 저장 — 야근 신청이 있는데 실제 퇴근 시각을 모르는 날이면 '정시 퇴근이 맞는가' 한 번 묻는다(맞으면 그 시각을 실제로 남겨 경고를 끈다)
-    if(!_outChg&&o&&!hol&&prev.otE&&prev.otOk!==0&&otActAbs(_e,prev)==null&&i===(prev.in||'')
+    if(!_outChg&&o&&_lgw&&prev.otE&&prev.otOk!==0&&otActAbs(_e,prev)==null&&i===(prev.in||'')
       &&confirm(`이날은 야근 신청이 있는데 실제로 퇴근한 시각을 모릅니다.\n\n[확인] ${o}에 퇴근한 것이 맞습니다 — 야근 ${fmtHM(Math.max(0,otEndAbs(_e,o)-schedEndAbs(_e)))}${otPunchOpen(_e,prev,recDate)?' (이제 직원이 퇴근을 다시 누를 수 없습니다)':''}\n[취소] 모릅니다 — 그대로 둡니다 (알게 되면 퇴근 칸에 실제 시각을 적어 주세요)`))nr.outAt=o;
     // 인정한 야근·휴일근무가 이 퇴근 때문에 줄어들면 한 번 묻는다 — 잊은 퇴근을 '정시로 채우기'(18:00)로 메우면 인정분이 0이 되던 것 (마지막 점검)
     if(_outChg&&o&&!_asked){
       // 야근 신청(대기·인정)이 있는 날인데 실제 퇴근을 모른다 — 정해진 퇴근시간 이하로 채우면(정시로 채우기) 야근이 0분이 된다. 한 번 묻고, [취소]는 저장하지 않는다
       const _a0=otActAbs(_e,prev), _a1=otActAbs(_e,nr), _se=schedEndAbs(_e);
-      if(!hol&&prev.otE&&prev.otOk!==0&&_a0==null&&otEndAbs(_e,prev.otE)>_se&&_a1!=null&&_a1<=_se
+      if(_lgw&&prev.otE&&prev.otOk!==0&&_a0==null&&otEndAbs(_e,prev.otE)>_se&&_a1!=null&&_a1<=_se
         &&!confirm(`${_e.name}님은 이날 야근을 신청했습니다(${otEndTxt(_e,prev.otE)}까지 예정${prev.otOk===1?' · 인정됨':''}).\n퇴근을 ${o}(으)로 저장하면 야근이 0분이 됩니다.\n\n[확인] ${o}에 퇴근한 것이 맞습니다 — 야근 없음\n[취소] 저장하지 않습니다 — 실제로 퇴근한 시각을 퇴근 칸에 적어 주세요`))return;
       const sb=hol?holSig(prev):otSig(prev), sa=hol?holSig(nr):otSig(nr);
-      const before=hol?holMin(_e,prev):otMin(_e,prev), after=hol?holMin(_e,nr):otMin(_e,nr);
+      const before=hol?holMin(_e,prev):(_lgw?otMin(_e,prev):0), after=hol?holMin(_e,nr):(_lgw?otMin(_e,nr):0);
       if(sb===sa&&after<before&&!confirm(`퇴근을 ${o}(으)로 저장하면 인정한 ${hol?'휴일근무':'야근'}이 ${fmtHM(before)} → ${fmtHM(after)} 가 됩니다.\n\n[확인] ${o} 이(가) 실제로 퇴근한 시각입니다 — 그 시각까지만 셉니다\n[취소] 실제 퇴근은 그대로 둡니다 — 퇴근 칸만 고칩니다`)){
         if(prev.outAt)nr.outAt=prev.outAt; else delete nr.outAt;   // 예전에 남은 실제 퇴근을 그대로 — 인정한 시간이 바뀌지 않는다
       }
@@ -2360,11 +2438,11 @@ function clearOt(){
   if(window._recSeen!=null&&otSeen(r)!==window._recSeen){ openRec(recEmpId,recDate); toast('방금 기록이 바뀌었습니다 — 다시 확인해 주세요'); return; }
   const hol=!isWorkday(emp(recEmpId),new Date(recDate+'T00:00:00'));
   const _e=emp(recEmpId), _t=Object.assign({},r); delete _t.otOut; delete _t.outAt;
-  const _b0=hol?0:otMin(_e,r), _b1=hol?0:otMin(_e,_t);
+  const _lg=!hol&&otLegacyOn(_e,recDate), _b0=_lg?otMin(_e,r):0, _b1=_lg?otMin(_e,_t):0;   // 새 방식 신청이 있는 날은 예전 판 야근을 세지 않는다
   if(!confirm(`${_e.name}님 ${recDate} 늦게 찍힌 퇴근 시각(${r.otOut})을 지울까요?\n출퇴근 기록은 그대로 둡니다.\n`
     +(hol?(r.otOk!=null?'인정·반려한 기록이면 다시 확인해야 집계됩니다.':'휴일근무 시간이 바뀝니다.')
       :_b1<_b0?`인정한 야근이 ${fmtHM(_b0)} → ${fmtHM(_b1)} 가 됩니다 — 실제로 퇴근한 시각을 모르게 됩니다. 실제 시각을 알면 퇴근 칸에 적어 주세요.`
-      :'(평일 야근은 신청·인정한 날, 실제로 퇴근을 누른 시각까지 셉니다)')))return;
+      :(r.otE&&_lg)?'(예전 방식 신청 — 신청·인정한 날, 실제로 퇴근을 누른 시각까지 셉니다)':'(야근은 승인된 신청 시간으로 셉니다 — 이 시각은 참고 기록입니다)')))return;
   delete r.otOut; delete r.outAt; r.manual=true;   // 실제 시각(outAt)도 — 남기면 그 시각이 계속 실제 퇴근으로 쓰인다
   save(); queueRec(recDate,recEmpId); closeM('mdRec'); recRerender(); toast('늦게 찍힌 퇴근 시각을 지웠습니다');
 }
@@ -2734,7 +2812,7 @@ function leaveItemsIn(e,k,upTo){
   const p=lvPeriod(e,k);
   return Object.entries(leavesDB().items)
     .filter(([id,x])=>leaveLive(x)&&x.e===e.id&&lvInPeriod(p,x.d)&&(!upTo||x.d<=upTo))
-    .map(([id,x])=>({id,...x})).sort((a,b)=>a.d<b.d?1:-1);
+    .map(([id,x])=>({...x,id})).sort((a,b)=>a.d<b.d?1:-1);
 }
 /* 연차를 '사용'으로 세는 날인가 — 근무일인 날만. 승인한 뒤 공휴일이 되었거나, 퇴사일 뒤이거나,
    근무요일을 바꿔 쉬는 날이 된 날의 연차는 깎지 않는다(급여대장·'이 달 연차사용'과 같은 기준). */
@@ -2759,6 +2837,8 @@ function renderLeave(){
   if(isStaffDev()){ renderLeaveMine(); return; }     // 직원 화면 — 본인 것만
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display=canManage()?'block':'none';
   const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
+  { const bo=document.getElementById('btnOtReq'); if(bo)bo.style.display=myEmpId()?'block':'none';
+    const bx=document.getElementById('btnOtAdd'); if(bx)bx.style.display=canManage()?'block':'none'; }
   renderLeaveWait();
   const can=canManage();
   document.getElementById('btnLeaveAdd').style.display=can?'':'none';
@@ -2882,13 +2962,13 @@ function delLeave(id){
      · 승인/반려/삭제: 관리자 기기만 바뀌고 클라우드는 옛 상태 → 다른 기기에서 되살아났다.
    nw:1 = 아직 서버에 한 번도 올라간 적 없는 새 신청 (거부되면 되돌릴 수 있다) */
 function lvPending(id){ return !!(DB.pendLv&&DB.pendLv.some(x=>x.id===id)); }
-function queueLeave(id,isNew){
+function queueLeave(id,isNew,opt){   // opt.mo: 시간만 고친 것 — 그사이 바뀐 서버의 결정(승인 취소·반려)을 덮지 않는다
   if(!cloudOn())return;
   DB.pendLv=DB.pendLv||[];
-  const old=DB.pendLv.find(x=>x.id===id);
-  if(old){ old.dirty=1; if(!isNew)old.nw=0; }   // 전송 중이었다면 끝난 뒤 새 값으로 다시
-  else DB.pendLv.push(isNew?{id,nw:1}:{id});
-  lsSave();
+  const mo=!!(opt&&opt.mo), old=DB.pendLv.find(x=>x.id===id);
+  if(old){ old.dirty=1; old.mo=(mo&&old.mo)?1:0; if(!isNew)old.nw=0; }   // 전송 중이었다면 끝난 뒤 새 값으로 다시 · 시간만 고친 것끼리만 '시간만 고침'으로 남는다(승인·반려가 섞이면 결정까지 보낸다)
+  else DB.pendLv.push(isNew?{id,nw:1}:mo?{id,mo:1}:{id});
+  lsSave();                                         // 표시(mo)까지 이 기기에 남긴다 — 앱을 껐다 켜도 지킨다 (2026-11-26 재검토)
   flushLeaves();
 }
 let lvBusy=false;
@@ -2907,6 +2987,17 @@ async function flushLeaves(){
            예전에는 무조건 덮어써서 ① 오프라인에 있던 옛 승인이 다른 관리자의 최신 반려를 지웠고
            ② 응답만 끊긴 신청이 그 뒤의 관리자 승인을 '승인 대기'로 되돌렸다. */
         const c=await cfetch('/leaves/items/'+it.id);
+        /* (2026-11-26 검토) 엇갈림
+           · 직원의 취소(삭제)는 '대기'일 때만 — 서버에서 이미 승인·반려됐으면 취소하지 않고 서버 것을 받는다
+           · 서버에서 이미 취소(삭제)된 신청을, 그걸 모르는 기기가 승인·시간 고치기로 되살리지 않는다
+           · 시간만 고친 것(it.mo)은 그사이 서버의 결정이 바뀌었으면(승인 취소·반려) 보내지 않는다 */
+        if(c&&((x.del&&!c.del&&c.st!=='w'&&isStaffDev())||(c.del&&!x.del)||(it.mo&&!c.del&&(c.st||'')!==(x.st||'')))){
+          const sc=lvClean(it.id,c); if(sc){ leavesDB().items[it.id]=sc; took++; }
+          toast(c.del?(isStaffDev()?'이미 취소·삭제된 신청입니다':(c.k==='ot'&&c.st==='w')?'직원이 취소한 신청입니다 — 반영하지 않았습니다':'다른 관리자 기기에서 삭제된 항목입니다 — 반영하지 않았습니다')
+            :x.del?'이미 승인·반려된 신청이라 취소되지 않았습니다 — 관리자에게 말씀해 주세요'
+            :'그사이 다른 기기에서 승인이 바뀌어 시간을 고치지 않았습니다 — 다시 확인해 주세요');
+          continue;
+        }
         /* 누가 맞는가
            ① 내가 삭제했으면 내가 이긴다 — 삭제는 명시적 의사표시다.
               (예전에는 '대기' 신청의 삭제가 더 오래된 클라우드 값에 항상 져서, 지워도 되살아났다)
@@ -2928,7 +3019,8 @@ async function flushLeaves(){
           else failNote('연차 동기화',(emp(x.e)||{}).name||'',it.id,'서버 값의 모양이 잘못되어 받지 않았습니다');
           continue;
         }
-        await cfetch('/leaves/items/'+it.id,{method:'PUT',body:JSON.stringify(x)}); okN++;
+        await cfetch('/leaves/items/'+it.id,{method:'PUT',body:JSON.stringify(Object.assign({},x,{sendErr:undefined}))}); okN++;   // '거부됨'은 이 기기만의 표시 — 서버에 올리지 않는다
+        if(x.sendErr)delete x.sendErr;   // 서버가 받았다 — 멈춤 표시를 푼다
         if(it.dirty)keep.push(it);     // 보내는 중에 또 바뀌었다 → 새 값으로 다시
       }catch(e){
         it.f=(it.f||0)+1;
@@ -2936,6 +3028,8 @@ async function flushLeaves(){
         else keep.push(it);            // 인터넷·과부하 문제 — 연결될 때까지 보관
       }
     }
+    // 보내는 동안 다시 바뀐 항목은 이미 지나갔어도 다시 보낸다 — 예전에는 앞에서 보낸 신청을 그사이 취소하면 그 취소가 대기열에서 사라졌다 (2026-11-26 재검토)
+    todo.forEach(it=>{ if(it.dirty&&!keep.includes(it)&&!bad.includes(it)&&leavesDB().items[it.id])keep.push(it); });
     // 보내는 동안 새로 들어온 항목은 보존
     const seen=new Set(todo.map(x=>x.id));
     DB.pendLv=keep.concat((DB.pendLv||[]).filter(x=>!seen.has(x.id)));
@@ -2992,7 +3086,7 @@ function leaveMergeCloud(cl){
   Object.entries(L.items).forEach(([id,x])=>{
     const c=ci[id];
     const decided=x=>x&&x.st!=='w';
-    if(!c||(x.del&&!c.del)||((x.ts||0)>(c.ts||0))
+    if(!c||(x.del&&!c.del&&(lvPending(id)||!isStaffDev()))||((x.ts||0)>(c.ts||0))   // 직원 폰: 이미 보낸 취소가 서버와 다르면 서버를 따른다
        ||((x.ts||0)===(c.ts||0)&&decided(x)&&!decided(c))){   // 같은 시각이면 결정된 쪽이 이긴다
       items[id]=x;                                  // 내 쪽이 더 새롭다(또는 클라우드에 없다)
       if(!lvPending(id))upI[id]=x;                  // 대기열에 있으면 거기서 보낸다
@@ -3027,15 +3121,17 @@ function settleOne(e,y,m){
   for(let dd=1;dd<=last;dd++){
     const d=new Date(y,m,dd), ds=fmtD(d), r=recOf(ds,e.id);
     if(!r)continue;
-    if(r.in){ ot+=isWorkday(e,d)?otMin(e,r):holMin(e,r); }
+    const lgOn=otLegacyOn(e,ds);                        // 새 방식 신청이 있는 날은 예전 판 기록의 야근을 세지 않는다
+    if(r.in){ ot+=isWorkday(e,d)?(lgOn?otMin(e,r):0)+otApprMin(e,ds):holMin(e,r); }   // 평일: 승인된 야근 신청 시간 (+ 예전 판 기록에 붙은 야근)
     const wdy=isWorkday(e,d);
     if(!wdy&&(holPendMin(e,r)>0||(r.in&&r.otE&&!otDecided(r,holSig(r)))))wait++;   // 확인 안 된 휴일근무 — 기록 1건은 1건으로
     // r.in 가드: 결근 처리된 날에 남은 신고·야근 입력은 세지 않는다.
     // (야근 현황판은 출근 기록이 없으면 보여 주지 않으므로, 세면 출처를 못 찾는 유령이 된다)
     if(r.in&&r.rin&&r.rok==null)wait++;                 // 지각 정정 신고 대기
-    if(wdy&&r.in&&r.otE&&!otDecided(r,otSig(r)))wait++; // 야근 신청 대기 — 결정 뒤 신청·퇴근이 바뀐 것 포함 (휴일은 위에서 셌다)
-    if(wdy&&otNeedEnd(e,r,ds)){ wait++; need++; }        // 인정했지만 실제 퇴근 시각이 없다 — 관리자가 퇴근 칸에 적어야 집계된다
-    if(wdy&&otRunning(e,r,ds))run++;                     // 인정한 야근을 지금 하는 중 — 퇴근을 누르면 잡힌다
+    if(wdy&&lgOn&&r.in&&r.otE&&!otDecided(r,otSig(r)))wait++; // 야근 신청 대기 — 결정 뒤 신청·퇴근이 바뀐 것 포함 (휴일은 위에서 셌다)
+    if(wdy&&r.in)wait+=otWaitItems(e,ds).length;          // 야근 신청(새 방식) 확인 대기
+    if(wdy&&lgOn&&otNeedEnd(e,r,ds)){ wait++; need++; }  // 인정했지만 실제 퇴근 시각이 없다 — 관리자가 퇴근 칸에 적어야 집계된다
+    if(wdy&&lgOn&&otRunning(e,r,ds))run++;               // 인정한 야근을 지금 하는 중 — 퇴근을 누르면 잡힌다
     if(r.in&&(r.far!=null||r.farO!=null))farCnt++;       // 회사 밖에서 찍음 (결근 처리된 날은 세지 않는다 — 현황에서 찾아갈 대상이 없다)
   }
   /* 연차는 '그 달 말일' 기준으로 본다 — 언제 열어도 같은 숫자가 나와야 월말 정산이다.
@@ -3095,7 +3191,7 @@ function renderSettle(y,m){
       h+=`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;">
         <b>${esc(r.e.name)}</b><span style="color:#D95B23;font-weight:700;">${r.wait}건</span></div>`;
     });
-    h+=`<div class="muted" style="margin-top:8px;font-size:12px;">연차 신청은 [🌴 연차] 탭에서, 지각·야근은 아래 기록을 눌러 확인합니다.</div></div>`;
+    h+=`<div class="muted" style="margin-top:8px;font-size:12px;">연차·야근 신청은 [🌴 연차] 탭의 승인 대기 목록에서, 지각은 아래 기록을 눌러 확인합니다.</div></div>`;
   }
 
   h+=`<div class="card" style="padding:10px;"><div style="font-weight:800;margin:2px 0 6px 4px;">직원별 정산표</div><div class="tbl-wrap"><table>
@@ -3133,10 +3229,14 @@ function renderOtBoard(y,m){
         const hp=holPendMin(e,r); if(hp>0)pend.push({e,ds,d,min:hp,out:holEndTxt(e,r),hol:true,memo:r.otMemo||''});
         continue;
       }
-      const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:otCapTxt(e,r),memo:r.otMemo||''});   // 신청 + 인정만
-      const pm=otPendMin(e,r); if(pm>0||(r.otE&&!otDecided(r,otSig(r))))pend.push({e,ds,d,min:pm,out:otCapTxt(e,r),memo:r.otMemo||''});
-      if(otNeedEnd(e,r,ds))pend.push({e,ds,d,min:0,need:true,memo:r.otMemo||''});   // 인정했지만 실제 퇴근 시각이 없다
-      if(r.otOut&&!r.otE)info.push({e,ds,d,t:r.otOut});                 // 신청 없이 늦게 찍은 날 — 세지 않음(참고)
+      if(otLegacyOn(e,ds)){   // 예전 판 기록에 붙은 야근 — 새 방식 신청이 없는 날만
+        const om=otMin(e,r); if(om>0)logs.push({e,ds,d,min:om,out:otCapTxt(e,r),memo:r.otMemo||''});   // 신청 + 인정만
+        const pm=otPendMin(e,r); if(pm>0||(r.otE&&!otDecided(r,otSig(r))))pend.push({e,ds,d,min:pm,out:otCapTxt(e,r),memo:r.otMemo||''});
+        if(otNeedEnd(e,r,ds))pend.push({e,ds,d,min:0,need:true,memo:r.otMemo||''}); }  // 인정했지만 실제 퇴근 시각이 없다
+      { const its=otItemsOn(e.id,ds), ap=its.reduce((s,x)=>s+(x.st?0:otItemMin(x)),0);   // 야근 신청(새 방식) — 승인 · 확인 대기
+        if(ap>0)logs.push({e,ds,d,min:ap,item:true,memo:its.filter(x=>!x.st).map(x=>x.memo).filter(Boolean).join(' · ')});
+        its.filter(x=>x.st==='w').forEach(x=>pend.push({e,ds,d,min:otItemMin(x),item:true,memo:x.memo||''}));
+        if(r.otOut&&!r.otE&&!its.length)info.push({e,ds,d,t:r.otOut}); }        // 신청 없이 늦게 찍은 날 — 세지 않음(참고)
     }
   });
   logs.forEach(l=>{ const p=per[l.e.id]=per[l.e.id]||{e:l.e,min:0,cnt:0,last:''}; p.min+=l.min; p.cnt++; if(l.ds>p.last)p.last=l.ds; });
@@ -3151,7 +3251,7 @@ function renderOtBoard(y,m){
     h+='</div><div class="card"><div style="font-weight:800;margin-bottom:2px;">야근 기록</div>';
     logs.sort((a,b)=>a.ds<b.ds?1:a.ds>b.ds?-1:b.min-a.min).forEach(l=>{
       h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}><div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${esc(l.e.name)}
-        <span class="muted">${l.hol?'휴일근무':'퇴근'} ${l.out||''}</span>${l.wait?' <span class="tag man">⏳ 확인 대기</span>':''}
+        <span class="muted">${l.hol?'휴일근무':l.item?'야근 승인':'퇴근'} ${l.out||''}</span>${l.wait?' <span class="tag man">⏳ 확인 대기</span>':''}
         ${l.memo?`<div class="muted" style="font-size:11.5px;">${esc(l.memo)}</div>`:''}</div><div class="plus">+${fmtHM(l.min)}</div></div>`;
     });
     h+='</div>';
@@ -3160,25 +3260,25 @@ function renderOtBoard(y,m){
     const pt=pend.reduce((s,l)=>s+l.min,0);
     h+=`<div class="card" style="background:#FFF6E5;border:1.5px solid var(--yellow);">
       <div style="font-weight:800;margin-bottom:4px;">⏳ 확인 대기 ${fmtHM(pt)} — 아직 집계에 들어가지 않았습니다</div>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px;">직원이 신청한 야근 또는 아직 확인 안 된 휴일근무입니다. 기록을 눌러 [인정]해야 위 숫자에 반영됩니다.${pend.some(l=>l.need)?' ⚠️ 표시는 인정했지만 퇴근을 누른 시각이 없는 날입니다 — 기록을 눌러 퇴근 칸에 실제로 퇴근한 시각을 적어 주세요(정시 퇴근이 맞으면 그대로 [저장]).':''}</div>`;
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px;">직원이 신청한 야근 또는 아직 확인 안 된 휴일근무입니다. [🌴 연차] 탭의 승인 대기 목록이나 기록 창에서 [승인]해야 위 숫자에 반영됩니다.${pend.some(l=>l.need)?' ⚠️ 표시는 인정했지만 퇴근을 누른 시각이 없는 날입니다 — 기록을 눌러 퇴근 칸에 실제로 퇴근한 시각을 적어 주세요(정시 퇴근이 맞으면 그대로 [저장]).':''}</div>`;
     pend.sort((a,b)=>a.ds<b.ds?1:-1).forEach(l=>{
       h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}>
         <div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${esc(l.e.name)}
-        <span class="muted">${l.need?'인정됨 · 퇴근 시각 필요':(l.hol?'휴일근무 ':'')+esc(l.out||'')+'까지'}</span>${l.memo?`<div class="muted" style="font-size:11.5px;">${esc(l.memo)}</div>`:''}</div>
+        <span class="muted">${l.need?'인정됨 · 퇴근 시각 필요':l.item?'야근 신청':(l.hol?'휴일근무 ':'')+esc(l.out||'')+'까지'}</span>${l.memo?`<div class="muted" style="font-size:11.5px;">${esc(l.memo)}</div>`:''}</div>
         <div class="plus" style="color:#D95B23;">${l.need?'⚠️':'+'+fmtHM(l.min)}</div></div>`;
     });
     h+='</div>';
   }
   if(info.length){
     h+=`<div class="card"><div style="font-weight:800;margin-bottom:2px;">📋 신청 없이 퇴근을 늦게 찍은 날 — 야근으로 세지 않습니다</div>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px;">참고용입니다. 실제로 야근을 했다면 직원이 [✋ 그 밖의 신청 → 🌙 야근]으로 신청하고, 관리자가 [인정]해야 집계됩니다.</div>`;
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px;">참고용입니다. 실제로 야근을 했다면 직원이 [🌙 야근 신청하기](또는 퇴근 뒤 출퇴근 창의 [🌙 야근 신청])로 신청하고, 관리자가 [승인]해야 집계됩니다.</div>`;
     info.sort((a,b)=>a.ds<b.ds?1:-1).forEach(l=>{
       h+=`<div class="ot-log" ${canManage()?`style="cursor:pointer;" onclick="openRec('${l.e.id}','${l.ds}')"`:''}>
         <div><b>${l.ds.slice(5).replace('-','.')}(${DAYNM[l.d.getDay()]})</b> ${esc(l.e.name)} <span class="muted">퇴근을 ${esc(l.t)}에 누름 · 신청 없음</span></div></div>`;
     });
     h+='</div>';
   }
-  h+=`<div class="muted" style="margin:0 4px 6px;">야근은 직원이 [🌙 야근 신청하기] 또는 [✋ 그 밖의 신청 → 🌙 야근]으로 <b>신청</b>하고(앱이 없는 직원은 관리자가 기록 창의 [야근 신청 대신 입력]으로), 관리자가 기록을 눌러 <b>[인정]</b>한 날만 집계됩니다. 인정된 날은 <b>퇴근을 누른 시각</b>까지가 야근 시간입니다(신청한 시각은 예정). 퇴근을 늦게 찍기만 한 날은 야근으로 세지 않습니다. 급여는 정시 기준 그대로입니다.</div>`;
+  h+=`<div class="muted" style="margin:0 4px 6px;">야근은 직원이 [🌴 연차] 탭의 <b>[🌙 야근 신청하기]</b>로 몇 시간·작업 내용을 미리 신청하고(계획에 없던 시간은 퇴근을 누른 뒤 출퇴근 창의 [🌙 야근 신청]으로), 관리자가 <b>[승인]</b>한 시간만큼 집계됩니다(30분 단위 · 앱이 없는 직원은 관리자가 [＋ 야근 등록]). 퇴근을 늦게 찍기만 한 날은 야근으로 세지 않습니다. 급여는 정시 기준 그대로이고, 야근은 따로 정리합니다.</div>`;
   return h;
 }
 
@@ -3456,7 +3556,7 @@ function buildSettleSpec(y,m,rows,notes,lvStart){
    '★ 연차 자동 계산은 정직원만 합니다(임원 제외). 3.3%·일용직·임원은 관리자가 앱에서 발생 일수를 넣은 경우에만 연차 칸이 채워집니다.',
    '★ 개근·출근율 80% 여부는 자동으로 반영하지 않습니다. 관리자가 앱에서 발생 일수를 고치면 비고에 "연차 발생 수동 입력"으로 표시됩니다.',
    '★ 연차 발생·사용은 해당 연차 기간에서 이 달 말일까지의 누적입니다. 아직 끝나지 않은 달은 만든 날까지 생긴 일수입니다.',
-   '★ 야근·휴일근무 시간: 평일 야근은 직원이 신청하고 관리자가 인정한 날만, 그날 퇴근을 누른 시각까지(정해진 퇴근시간 이후) 셉니다(신청 없이 늦게 누른 날·확인 대기·반려는 0). 휴일은 관리자가 인정한 것만 셉니다. 급여에는 자동 반영되지 않습니다.',
+   '★ 야근·휴일근무 시간: 평일 야근은 직원이 몇 시간·작업 내용을 신청하고 관리자가 승인한 시간만큼 셉니다(퇴근을 늦게 누르기만 한 날·확인 대기·반려는 0). 휴일은 관리자가 인정한 것만 셉니다. 급여에는 자동 반영되지 않습니다.',
    '★ 미사용 연차 평가액 = 1일 통상임금(통상시급 × 8시간) × 잔여 일수(음수면 0). 회계 참고용 추정치이며 실제 지급 의무 금액과 다를 수 있습니다.'
   ].concat(notes||[]);
   guide.forEach((tx,i)=>{ put(g+1+i,1,tx,null,'guide'); merges.push([g+1+i,1,g+1+i,LG_SETTLE_COLS]); });
@@ -4629,7 +4729,7 @@ function supMe(){ const c=cloudCfg(); return c&&c.myEmpId&&emp(c.myEmpId)?c.myEm
 function supLive(x){ return !!(x&&!x.ok&&!x.del); }
 function supPending(){
   return Object.entries(suppliesDB().items).filter(([,x])=>supLive(x))
-    .map(([id,x])=>({id,...x})).sort((a,b)=>(b.ts||0)-(a.ts||0));
+    .map(([id,x])=>({...x,id})).sort((a,b)=>(b.ts||0)-(a.ts||0));
 }
 function supWhen(ts){
   const d=new Date(ts||0), hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
@@ -4782,6 +4882,8 @@ function lvMineRule(e,k,p){
 function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 준다 (동료 정보 비노출)
   const ba=document.getElementById('btnLeaveAdd'); if(ba)ba.style.display='none';
   const bm=document.getElementById('btnReqMore'); if(bm)bm.style.display=myEmpId()?'block':'none';
+  { const bo=document.getElementById('btnOtReq'); if(bo)bo.style.display=myEmpId()?'block':'none';
+    const bx=document.getElementById('btnOtAdd'); if(bx)bx.style.display='none'; }
   const id=myEmpId(), e=id?emp(id):null;
   const k=e?lvCur(e)+lvView:0, p=e?lvPeriod(e,k):null;
   document.getElementById('leaveLabel').innerHTML=lvLabel(e?[{e:e,k:k,p:p}]:[],true);
@@ -4840,9 +4942,9 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 �
   /* 연차 말고 올린 신청 — 처리 상태까지 보여 준다 (대기 / 승인 / 반려) */
   const rqs=Object.entries(leavesDB().items)
     .filter(a=>a[1]&&!a[1].del&&a[1].k&&a[1].e===id&&lvInPeriod(p,a[1].d))
-    .map(a=>Object.assign({id:a[0]},a[1])).sort((a,b)=>a.d<b.d?1:-1);
-  s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">그 밖의 신청 <span style="color:var(--purple);">${rqs.length}건</span></div>`;
-  if(!rqs.length)s+='<div class="muted">야근 · 조퇴 · 늦은 출근 · 외출 · 휴일근무는 위 [✋ 그 밖의 신청] 으로 올려 주세요.</div>';
+    .map(a=>Object.assign({},a[1],{id:a[0]})).sort((a,b)=>a.d<b.d?1:-1);
+  s+=`<div class="card"><div style="font-weight:800;margin-bottom:4px;">야근 · 그 밖의 신청 <span style="color:var(--purple);">${rqs.length}건</span></div>`;
+  if(!rqs.length)s+='<div class="muted">야근은 위 [🌙 야근 신청하기], 조퇴 · 늦은 출근 · 외출 · 휴일근무는 [✋ 그 밖의 신청] 으로 올려 주세요.</div>';
   rqs.forEach(x=>{
     const d=new Date(x.d+'T00:00:00');
     const st=x.st==='w'?['man','대기']:x.st==='x'?['abs','반려']:['ok','승인'];
@@ -4850,7 +4952,7 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 �
       <span class="tag leave">${esc(lvName(x))}</span>${x.t1?`<b style="margin-left:5px;">${esc(lvWhen(x).trim())}</b>`:''}
       ${x.memo?`<div class="muted" style="margin-top:3px;">${esc(x.memo)}</div>`:''}
       ${x.half?'<div class="muted" style="margin-top:3px;">반차로 처리되었습니다</div>':''}</div>
-      <span class="tag ${st[0]}" style="flex-shrink:0;">${st[1]}</span></div>`;
+      <span style="flex-shrink:0;display:flex;gap:6px;align-items:center;"><span class="tag ${st[0]}">${st[1]}</span>${(x.k==='ot'&&x.st==='w')?`<button class="btn ghost" style="padding:5px 9px;font-size:12px;" onclick="otReqCancel('${x.id}')">취소</button>`:''}</span></div>`;
   });
   document.getElementById('leaveBody').innerHTML=s+'</div>';
 }
@@ -4858,7 +4960,7 @@ function renderLeaveMine(){ // 직원 기기: 본인 연차·신청만 보여 �
    연차와 같은 서랍에 k 꼬리표를 달아 담는다. 급여에는 들어가지 않는다(leaveLive 참고). */
 function openReqPick(){
   if(!myEmpId()){ toast('본인 확인이 안 됩니다. 받으신 초대 링크로 다시 입장해 주세요'); return; }
-  const items=[['ot','🌙','야근 (연장근로)','퇴근시간 뒤에 더 일해요 · 일했어요'],
+  const items=[['ot','🌙','야근 (연장근로)','몇 시간 · 작업 내용을 신청해 승인받아요 (위 [🌙 야근 신청하기]와 같아요)'],
     ['early','🏃','조퇴 (일찍 퇴근)','퇴근시간보다 먼저 나가요'],
     ['late','🕐','늦은 출근','출근시간보다 늦게 와요 (오후 출근 포함)'],
     ['out','🚶','외출','근무 중에 잠깐 나갔다 와요'],
@@ -4872,7 +4974,121 @@ function openReqPick(){
       <div class="muted" style="font-size:12px;margin-top:3px;margin-left:28px;font-weight:400;">${a[3]}</div></button>`).join('');
   openM('mdReqPick');
 }
-function reqPick(k){ closeM('mdReqPick'); if(k==='ot'){ otFromReq(); return; } reqOpen(k); }
+function reqPick(k){ closeM('mdReqPick'); if(k==='ot'){ openOtReq(); return; } reqOpen(k); }
+/* ── 야근 신청 창 — 직원 본인(self) · 공용 기기 출퇴근 창(kiosk) · 관리자 등록(admin, 바로 승인) ── */
+function openOtReq(opt){
+  opt=opt||{};
+  const me=myEmpId(), mode=opt.mode||(me?'self':'admin');
+  if(mode==='admin'&&!(canManage()&&adminOK)){ toast('관리자 기기에서 관리자 비밀번호를 넣은 뒤 등록할 수 있습니다'); return; }
+  if(mode==='self'&&!me){ toast('본인 확인이 안 됩니다. 받으신 초대 링크로 다시 입장해 주세요'); return; }
+  const empId=mode==='self'?me:(opt.emp||'');
+  if(mode==='kiosk'&&!emp(empId))return;
+  window._oq={mode:mode,af:opt.af?1:0,fixDs:(opt.ds&&(opt.af||opt.fix))?opt.ds:''};
+  document.getElementById('oqTitle').textContent=mode==='admin'?'🌙 야근 등록 (관리자 — 바로 승인)':opt.af?'🌙 야근 신청 — 퇴근 뒤 더 한 시간':'🌙 야근 신청';
+  const eb=document.getElementById('oqEmpBox'), es=document.getElementById('oqEmp');
+  if(mode==='admin'&&!empId){ eb.style.display=''; es.innerHTML=activeEmps().map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join(''); }
+  else { eb.style.display='none'; es.innerHTML=`<option value="${esc(empId)}">${esc((emp(empId)||{}).name||'')}</option>`; es.value=empId; }
+  const d=document.getElementById('oqDate'); d.value=opt.ds||todayStr(); d.min=mode==='admin'?'':monthFloor(); d.disabled=!!window._oq.fixDs;   // 관리자는 지난달 날짜도 등록한다
+  const sel=document.getElementById('oqMin');
+  let opts='<option value="">시간을 고르세요</option>'; for(let m=OT_STEP;m<=OT_MAXM;m+=OT_STEP)opts+=`<option value="${m}">${fmtHM(m)}</option>`;
+  sel.innerHTML=opts; sel.value='';
+  let hint='';
+  if(opt.af){   // 퇴근을 늦게 눌렀으면 그만큼(30분 단위로 내림)을 먼저 골라 둔다 — 고칠 수 있다
+    const e=emp(empId), r=recOf(opt.ds,empId), a=(e&&r)?otActAbs(e,r):null;
+    const used=otItemsOn(empId,opt.ds).filter(x=>x.st!=='x').reduce((s,x)=>s+otItemMin(x),0);   // 그날 이미 신청한 시간 — 같은 시간을 두 번 신청하지 않게
+    if(a!=null){ const late=Math.floor((a-schedEndAbs(e)-used)/OT_STEP)*OT_STEP;
+      if(a>schedEndAbs(e))hint=` · 퇴근을 ${esc(r.outAt||r.otOut)}에 눌렀습니다`+(used?(late>=OT_STEP?` (이미 신청한 ${fmtHM(used)} 빼고 골라 두었습니다)`:` (이미 신청한 ${fmtHM(used)}을 빼면 더 한 시간이 30분이 안 됩니다)`):'');
+      if(late>=OT_STEP)sel.value=String(Math.min(OT_MAXM,late)); }
+  }
+  document.getElementById('oqSub').innerHTML=`${esc((emp(empId)||{}).name||'')}${empId?'님':''}${hint}`;
+  document.getElementById('oqMemo').value='';
+  document.getElementById('oqSave').textContent=mode==='admin'?'등록하기 (바로 승인)':'신청하기';
+  document.getElementById('oqNote').innerHTML=mode==='admin'?'관리자가 등록한 야근은 <b>바로 승인</b>됩니다 — 그 시간만큼 야근으로 잡힙니다(그날 출근 기록이 있어야 셉니다).'
+    :opt.af?'계획에 없이 <b>퇴근 뒤 더 일한 시간</b>을 30분 단위로 신청합니다. 관리자가 승인하면 그 시간만큼 야근으로 잡힙니다.'
+    :'야근하기 전에 <b>몇 시간</b>, <b>무슨 일</b>인지 신청해 관리자 <b>승인</b>을 받아 주세요. 승인된 시간만큼 야근으로 잡힙니다(30분 단위). 퇴근을 늦게 누르는 것만으로는 야근이 아닙니다.';
+  oqCalc(); openM('mdOtReq');
+}
+function oqEmp(){ return emp(document.getElementById('oqEmp').value); }
+function oqCalc(){
+  const box=document.getElementById('oqCalcBox'); if(!box)return;
+  const e=oqEmp(), ds=(window._oq&&window._oq.fixDs)||document.getElementById('oqDate').value, m=+document.getElementById('oqMin').value||0;
+  if(!e||!safeDate(ds)){ box.innerHTML=''; return; }
+  const d=new Date(ds+'T00:00:00'), dd=`${ds.slice(5).replace('-','.')}(${DAYNM[d.getDay()]})`;
+  if(ds<e.joinDate||(e.leaveDate&&ds>e.leaveDate)){ box.innerHTML=`<span style="color:#C0392B;">${dd}은 ${ds<e.joinDate?'입사 전':'퇴사 뒤'} 날짜입니다</span>`; return; }
+  if(!isWorkday(e,d)){ box.innerHTML=`<span style="color:#C0392B;">${dd}은 ${esc(e.name)}님이 쉬는 날입니다 — 쉬는 날 근무는 출퇴근을 찍으면 관리자가 확인합니다</span>`; return; }
+  const its=otItemsOn(e.id,ds).filter(x=>x.st!=='x'), used=its.reduce((s,x)=>s+otItemMin(x),0), rr=recOf(ds,e.id);
+  const lg=(!its.length&&rr&&rr.otE&&!(rr.otOk===0&&otDecided(rr,otSig(rr))))?`이날은 예전 방식 야근 신청(~${otEndTxt(e,rr.otE)}${(rr.otOk===1&&otDecided(rr,otSig(rr)))?' · 인정':' · 확인 대기'})이 있습니다 — 새로 신청하면 예전 신청은 세지 않습니다`:'';
+  box.innerHTML=(m?`<span style="color:var(--purple);">${dd} ${otSpanTxt(e,m,used)} · 야근 ${fmtHM(m)}</span>`:`<span class="muted" style="font-weight:400;">${dd} — 몇 시간 할지 골라 주세요</span>`)
+    +(its.length?`<div class="muted" style="font-weight:400;font-size:12px;margin-top:4px;">그날 이미 신청한 야근: ${its.map(x=>fmtHM(otItemMin(x))+(x.st==='w'?' (대기)':' (승인)')).join(', ')} — 그 뒤 시간만 더 신청하세요</div>`:'')
+    +(lg?`<div style="font-weight:400;font-size:12px;margin-top:4px;color:#D95B23;">${esc(lg)}</div>`:'');
+}
+function saveOtReq(){
+  const q=window._oq||{}, e=oqEmp();
+  if(!e){ toast('직원을 골라 주세요'); return; }
+  if(q.mode==='self'&&(isStaffDev()||myEmpId())&&e.id!==myEmpId()){ toast('본인 것만 신청할 수 있습니다'); return; }
+  if(q.mode==='admin'&&!(canManage()&&adminOK)){ toast('관리자만 등록할 수 있습니다'); return; }
+  const ds=q.fixDs||document.getElementById('oqDate').value;
+  if(!safeDate(ds)){ toast('날짜를 골라 주세요'); return; }
+  if(q.mode!=='admin'&&ds<monthFloor()&&!(q.af&&q.fixDs===ds)){ toast('이번 달 날짜부터 신청할 수 있습니다. 더 지난 날은 관리자에게 말씀해 주세요'); return; }   // 관리자 등록·어제 퇴근 뒤 신청은 지난달도
+  if(ds<e.joinDate||(e.leaveDate&&ds>e.leaveDate)){ toast(ds<e.joinDate?'입사 전 날짜입니다':'퇴사 뒤 날짜입니다'); return; }
+  if(!isWorkday(e,new Date(ds+'T00:00:00'))){ toast('쉬는 날입니다 — 쉬는 날 근무는 출퇴근을 찍으면 관리자가 확인합니다'); return; }
+  const m=+document.getElementById('oqMin').value;
+  if(!otItemMinOk(m)){ toast('몇 시간 할지 골라 주세요 (30분 단위)'); return; }
+  const memo=document.getElementById('oqMemo').value.trim();
+  if(!memo&&q.mode!=='admin'){ toast('작업 내용을 적어 주세요 — 무슨 일을 하는지 알아야 승인할 수 있습니다'); return; }
+  const its=otItemsOn(e.id,ds).filter(x=>x.st!=='x'), used=its.reduce((s,x)=>s+otItemMin(x),0), rr=recOf(ds,e.id);
+  const lgLive=!!(rr&&rr.otE&&!(rr.otOk===0&&otDecided(rr,otSig(rr))));   // 예전 방식 신청(기록에 붙은 것)이 남은 날
+  if(its.length&&!confirm(`${ds} 이미 신청한 야근이 있습니다: ${its.map(x=>fmtHM(otItemMin(x))+(x.st==='w'?' (대기)':' (승인)')).join(', ')}\n\n그와 따로 ${fmtHM(m)}을(를) 더 ${q.mode==='admin'?'등록':'신청'}할까요? (앞의 시간과 겹치지 않는 시간만)`))return;
+  if(!its.length&&lgLive&&!confirm(`${ds}에는 예전 방식 야근 신청(~${otEndTxt(e,rr.otE)})이 있습니다.\n새 방식으로 ${q.mode==='admin'?'등록':'신청'}하면 예전 신청은 세지 않습니다(같은 저녁을 두 번 세지 않게).\n\n계속할까요?`))return;
+  const rid='l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const o={e:e.id,d:ds,k:'ot',m:m,t1:otHM(schedEndAbs(e)+used+m),memo:memo||'관리자 등록',ts:Date.now()};
+  if(q.mode!=='admin')o.st='w';
+  if(q.af||(q.mode!=='admin'&&((rr&&rr.out)||ds<todayStr())))o.af=1;   // 퇴근 뒤·지난 날에 올린 신청 = 계획에 없던(퇴근 뒤) 신청
+  if(q.mode!=='self')o.by='dev';
+  leavesDB().items[rid]=o; save(); queueLeave(rid,true);      // 실패해도 자동 재전송 — 조용히 사라지지 않는다
+  closeM('mdOtReq');
+  try{ renderLeave(); }catch(err){}
+  try{ renderKiosk(); }catch(err){}
+  try{ recRerender(); }catch(err){}   // 급여 탭(야근 현황판·정산)이나 현황을 다시 그린다
+  if(q.mode==='admin'){ toast(`${e.name}님 ${ds.slice(5).replace('-','.')} 야근 ${fmtHM(m)}을(를) 등록했습니다 (승인됨)`); return; }
+  const d=new Date(ds+'T00:00:00');
+  pushEvent('ot',e.id,`${ds.slice(5).replace('-','.')}(${DAYNM[d.getDay()]}) ${fmtHM(m)} (${otSpanTxt(e,m,used)})${o.af?' · 퇴근 뒤 신청':''}${q.mode==='kiosk'?' · 공용 기기':''} · ${memo}`);
+  toast(`야근 ${fmtHM(m)} 신청했습니다 — 관리자가 승인하면 그 시간만큼 야근으로 잡힙니다`);
+}
+function otAfterOpen(){ // 출퇴근 창 — 퇴근을 누른 뒤 '계획에 없이 더 한 시간' (자정 넘겨 어제 기록에 퇴근했으면 어제)
+  const e=emp(punchEmpId); if(!e)return;
+  const ds=otAfterDay(e), r=recOf(ds,e.id);
+  if(!(r&&r.in&&r.out)){ toast('퇴근을 누른 뒤에 신청할 수 있습니다'); return; }
+  closeM('mdPunch'); openOtReq({mode:isStaffDev()?'self':'kiosk',emp:e.id,ds:ds,af:1});
+}
+function otReqCancel(id){ // 직원 — 확인 대기 중인 본인 야근 신청 취소
+  const x=leavesDB().items[id]; if(!x||x.k!=='ot')return;
+  if(isStaffDev()&&x.e!==myEmpId())return;
+  if(x.st!=='w'){ toast('승인·반려된 신청은 관리자에게 말씀해 주세요'); return; }
+  if(!confirm(`${x.d} 야근 ${fmtHM(otItemMin(x))} 신청을 취소할까요?`))return;
+  x.del=true; x.ts=Date.now(); save(); queueLeave(id); renderLeave(); toast('야근 신청을 취소했습니다');
+}
+function otItemAct(id,act,v){ // 관리자 기록 창 — 승인 · 반려(승인 취소) · 시간 고치기
+  if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
+  const x=leavesDB().items[id]; if(!x||x.k!=='ot')return;
+  if(x.sendErr){ toast('이 항목은 서버가 거부했습니다 — 화면 위 빨간 띠의 [다시 보내기]를 눌러 주세요'); return; }   // 거부된 채로 고치면 서버의 옛 값으로 되돌아갔다
+  const nm=(emp(x.e)||{}).name||'';
+  if(act==='ok')lvApprove(id);
+  else if(act==='no'){
+    if(!confirm(`${nm}님 ${x.d} 야근 ${fmtHM(otItemMin(x))} ${x.st==='w'?'신청을 반려':'승인을 취소'}할까요?`))return;
+    x.st='x'; x.ts=Date.now(); save(); queueLeave(id); toast('반려했습니다');
+  }
+  else if(act==='min'){
+    const m=+v; if(!otItemMinOk(m)){ toast('30분 단위로 골라 주세요'); return; }
+    const e=emp(x.e);
+    if(e){ const om=otItemMin(x), ea=(x.t1&&safeHM(x.t1))?otEndAbs(e,x.t1):null, s0=(ea!=null&&om&&ea-om>=schedEndAbs(e))?ea-om:schedEndAbs(e); x.t1=otHM(s0+m); }   // 시작은 그대로, 끝만
+    x.m=m; x.ts=Date.now(); save(); queueLeave(id,false,{mo:1});   // 시간만 고친 것 — 그사이 서버의 결정(승인 취소·반려)을 덮지 않게
+    toast(`${nm}님 ${x.d} 야근을 ${fmtHM(m)}(으)로 고쳤습니다`);
+  }
+  if(document.getElementById('mdRec').classList.contains('on'))openRec(recEmpId,recDate);   // 기록 창에서 눌렀으면 다시 그린다
+  try{ recRerender(); }catch(err){}
+  try{ renderLeave(); }catch(err){}
+}
 /* 야근은 '그날의 출퇴근 기록'에 붙는다(기존 경로 그대로). 기록이 있는 날만 열 수 있다.
    같은 야근을 두 군데에 적으면 급여 야근 시간이 어느 쪽인지 알 수 없게 된다.
    이번 달 1일부터 오늘까지, 출근을 찍은 근무일 중에서 고른다 — 신청해야만 야근이 되므로 지난 날도 신청할 수 있어야 한다.
@@ -5129,6 +5345,7 @@ function renderLeaveWait(){
     const nm=(emp(x.e)||{}).name||'';
     s+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">
       <div style="min-width:0;font-size:13.5px;"><b>${esc(nm)}</b> ${esc(String(x.d).slice(5).replace('-','.'))} ${esc(lvName(x)+lvWhen(x))}
+      ${x.k==='ot'?`${x.af?' <span class="tag man">퇴근 뒤 신청</span>':''}${x.by==='dev'?' <span class="tag man">관리자·공용 기기</span>':''}${(emp(x.e)&&otApprMin(emp(x.e),x.d))?`<div class="muted" style="font-size:11.5px;color:#D95B23;">그날 이미 승인된 야근 ${fmtHM(otApprMin(emp(x.e),x.d))}</div>`:''}${(emp(x.e)&&otLegacyMin(emp(x.e),x.d))?`<div class="muted" style="font-size:11.5px;color:#D95B23;">⚠️ 이날 예전 방식으로 인정된 야근 ${fmtHM(otLegacyMin(emp(x.e),x.d))}은 이 신청이 있으면 세지 않습니다(두 번 세지 않게)</div>`:''}`:''}
       ${x.memo?`<div class="muted" style="font-size:11.5px;">${esc(x.memo)}</div>`:''}</div>
       ${lvPending(x.id)?'<span class="tag hol" style="flex-shrink:0;">전송 중</span>':''}
       ${admin?`<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
@@ -5241,9 +5458,9 @@ function otReject(){
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
   otDecide(0);
 }
-function otProxy(){   // 앱이 없는 직원 — 관리자가 직원 대신 야근 신청을 적는다(누가 입력했는지 남는다). 인정은 따로 누른다.
+function otProxy(){   // 앱이 없는 직원·말로 미리 정한 야근 — 관리자가 등록한다(바로 승인 · 관리자 기기에서 적은 것으로 남는다)
   if(!canManage()||!adminOK){ toast('관리자만 할 수 있습니다'); return; }
-  const id=recEmpId, ds=recDate; closeM('mdRec'); otRptOpen(id,ds);
+  const id=recEmpId, ds=recDate; closeM('mdRec'); openOtReq({mode:'admin',emp:id,ds:ds,fix:1});
 }
 function otDecide(v){
   const r=otTarget(); if(!r){ toast('확인할 신청이 없습니다'); return; }
@@ -5253,6 +5470,7 @@ function otDecide(v){
   r.otOk=v; r.okV=hol?holSig(r):otSig(r);         // 무엇을 보고 결정했는지 같이 남긴다
   DB.records[recDate][recEmpId]=r; save(); queueRec(recDate,recEmpId);
   openRec(recEmpId,recDate); recRerender();
+  if(!hol&&!otLegacyOn(e,recDate)){ toast(v?'예전 방식 신청을 인정했습니다 — 이날은 새 방식 야근 신청이 있어 이 예전 신청은 세지 않습니다(같은 저녁을 두 번 세지 않게)':'예전 방식 야근 신청을 반려했습니다'); return; }
   const mins=hol?holSpanMin(e,r):otMin(e,r);
   toast(hol?(v?`휴일근무를 인정했습니다 (${fmtHM(mins)})`:'휴일근무를 집계에서 제외했습니다')
            :(v?(otActAbs(e,r)!=null?`야근을 인정했습니다 (${fmtHM(mins)})`
@@ -5920,6 +6138,13 @@ window.addEventListener('focus',cloudSync);
 setTimeout(checkUpdate,2500);
 setTimeout(fetchWx,800); window.addEventListener('focus',fetchWx); // 인사말용 날씨 (30분 캐시)
 window.addEventListener('focus',()=>{ if(Date.now()-(window._lastVchk||0)>600000)checkUpdate(); }); // 앱 다시 열 때 10분 간격으로 새 버전 확인
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&Date.now()-(window._lastVchk||0)>600000)checkUpdate(); });
+/* 켜 둔 채로 있는 공용 기기(사무실 태블릿)는 '다시 열기'가 없어 옛 판이 오래 남았다 — 30분마다 확인한다.
+   창(신청·기록)이 열려 있거나 무엇을 적는 중이면 다음으로 미룬다 (새 버전이면 스스로 새로고침하므로) (2026-11-26) */
+setInterval(()=>{ try{
+  const ae=document.activeElement;
+  if(!document.hidden&&!document.querySelector('.modal-bg.on')&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))&&Date.now()-(window._lastVchk||0)>1800000)checkUpdate();
+}catch(e){} },300000);
 </script>
 <script id="logoData">
 const LOGO_MAIN='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA0oAAADzCAYAAAC49+bNAAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNi4wLWMwMDIgNzkuMTY0NDYwLCAyMDIwLzA1LzEyLTE2OjA0OjE3ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjEuMiAoV2luZG93cykiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTAxLTE0VDE0OjQyOjI1KzA5OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wMS0xNFQxNDo0NjoyMiswOTowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wMS0xNFQxNDo0NjoyMiswOTowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpJQ0NQcm9maWxlPSJzUkdCIElFQzYxOTY2LTIuMSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDo0NjNlYWQzOS1iY2ZkLTk2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';
